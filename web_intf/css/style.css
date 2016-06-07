@@ -15,11 +15,11 @@ li {
 	position: relative;
 }
 
-button.create, button.update, button.remove {
+button.create, button.update, button.remove,
+button.upload, button.encrypted {
 	margin: 0px 2px 0px 2px;
 	float: right;
 }
-
 
 span.title {
 	text-align: center;
@@ -30,4 +30,8 @@ span.title {
 
 #reviewed {
 	margin-top: 50px;
+}
+
+div.tab-pane {
+	padding: 25px 0px 25px 0px;
 }

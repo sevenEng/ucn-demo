@@ -37,7 +37,7 @@
       <div class="tab-content">
         <div role="tabpanel" class="tab-pane active container" id="review">
           
-          <div class="row" id="search-bar">
+          <div class="row">
             <div class="col-md-2"></div>
             <div class="col-md-8">
               <form id="search-bar" class="input-group">
@@ -71,21 +71,45 @@
 
         </div><!-- review tab -->
         
-        <div role="tabpanel" class="tab-pane" id="pcap">
+        <div role="tabpanel" class="tab-pane container" id="pcap">
 
           <h>Pcap</h>
 
         </div>
-        <div role="tabpanel" class="tab-pane" id="sqlite">
+        <div role="tabpanel" class="tab-pane container" id="sqlite">
         
           <h>SQLite</h>
 
         </div>
-        <div role="tabpanel" class="tab-pane" id="catalog">
+        <div role="tabpanel" class="tab-pane container" id="catalog">
+          <div class="row">
+            <div class="col-md-2"></div>
+            <div class="col-md-8">
 
-          <h>Data Cataloge</h>
+              <div id="catalog-review">
+                <div class="catalog-banner">
+                  <h4>Movie Reviews</h4>
+                  <button type="button" class="btn btn-default sync review">
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <ul class="list-group"></ul>
+              </div>
 
-        </div>
+              <div id="catalog-pcap">
+                <h4>Pcaps</h4>
+                <ul class="list-group"></ul>
+              </div>
+
+              <div id="catalog-sqlite">
+                <h4>Sqlite data</h4>
+                <ul class="list-group"></ul>
+              </div>
+
+            </div>
+            <div class="col-md-2"></div>
+          </div>
+        </div><!-- data catalog tab -->
       </div>
 
     </div>
@@ -104,6 +128,14 @@
 
       <button type="button" class="btn btn-default side remove">
         <span class="glyphicon glyphicon-trash" aria-hidden="true"></span>
+      </button>
+
+      <button type="button" class="btn btn-default catalog upload">
+        <span class="glyphicon glyphicon-upload" aria-hidden="true"></span>
+      </button>
+
+      <button type="button" class="btn btn-default catalog encrypted">
+        <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
       </button>
 
       <li class="list-group-item form-ctn" style="display:none">
@@ -135,6 +167,56 @@
             </div>
           </div>
         </form>
+      </li>
+
+      <li class="list-group-item catalog-item-ctn" style="display:none">
+        <form class="form-horizontal delegate-form" role="form">
+          <div class="form-group">
+            <label class="control-label col-sm-4" for="rating">Delegate search right to:</label>
+            <div class="col-sm-8">
+              <select class="delegate">
+                <option value="0" selected>Please Choose</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group"> 
+            <div class="col-sm-offset-4 col-sm-8">
+              <button type="button" class="btn btn-default apply-delegate">Delegate</button>
+            </div>
+          </div>
+        </form>
+        <br>
+        <form class="form-horizontal revoke-form" role="form">
+          <div class="form-group">
+            <label class="control-label col-sm-4" for="rating">Revoke search right from:</label>
+            <div class="col-sm-8">
+              <select class="revoke">
+                <option value="0" selected>Please Choose</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group"> 
+            <div class="col-sm-offset-4 col-sm-8">
+              <button type="button" class="btn btn-default apply-revoke">Revoke</button>
+            </div>
+          </div>
+        </form>
+        <!--
+        <div>
+          <span>Delegate search right to:</span>
+          <select class="delegate">
+            <option value="0" selected>Please Choose</option>
+          </select>
+          <button type="button" class="btn btn-default apply-delegate">Apply</button>
+        </div>
+        <div>
+          <span>Revoke search right from:</span>
+          <select class="revoke">
+            <option value="0" selected>Please Choose</option>
+          </select>
+          <button type="button" class="btn btn-default apply-revoke">Apply</button>
+        </div>
+        -->
       </li>
     </div>
 
