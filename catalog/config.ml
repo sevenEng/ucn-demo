@@ -19,7 +19,7 @@ let main =
                    "mirage-http"; "irmin.mirage";
                    "conduit.mirage";
                    "cohttp.lwt-core"; "ezjsonm"; "lwt"; "lwt.ppx";
-                   "logs"; "astring"] in
+                   "logs"; "mirage-logs"; "astring"] in
   let packages = [
       "irmin";
       "mirage-http";
@@ -34,9 +34,9 @@ let main =
       "logs";
       "astring"] in
   foreign ~libraries ~packages ~deps:[abstract nocrypto]
-    "Unikernel.Main" (stackv4 @-> job)
+    "Unikernel.Main" (stackv4 @-> clock @-> job)
 
 let () =
   register "ucn-catalog" [
-    main $ stack
+    main $ stack $ default_clock
   ]

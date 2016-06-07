@@ -11,7 +11,7 @@ let config = Irmin_git.config ()
 let task s = Irmin.Task.create ~date:0L ~owner:"ucn" s
 
 
-module Main (Stack:STACKV4) = struct
+module Main (Stack:STACKV4) (Clock:V1.CLOCK) = struct
 
   module TCP = Stack.TCPV4
   module Server = Cohttp_mirage.Server(TCP)
@@ -19,6 +19,7 @@ module Main (Stack:STACKV4) = struct
   let ctx = Cohttp_mirage.Client.default_ctx
   let src = Logs.Src.create "catalog"
   module Log = (val Logs.src_log src : Logs.LOG)
+  module Logs_reporter = Mirage_logs.Make(Clock)
 
   module Review = struct
     let cnt = ref 0
@@ -100,10 +101,13 @@ module Main (Stack:STACKV4) = struct
       Store.update (store ("create review meta " ^ id)) path v
 
 
+    let has_meta store id =
+      let path = ["review"; "meta"; id] in
+      Store.read (store ("check for review meta" ^ id)) path
+
     let rec read_meta store rst =
       let id = List.hd rst in
-      let path = ["review"; "meta"; id] in
-      match%lwt Store.read (store ("read review meta " ^ id)) path with
+      match%lwt has_meta store id with
       | Some v -> return_some v
       | None ->
          match%lwt read_meta_remote id with
@@ -149,6 +153,40 @@ module Main (Stack:STACKV4) = struct
       Store.update (store msg) path v
 
 
+    let revoke_all store file_id =
+      match%lwt read_delegations store file_id with
+      | None -> return_unit
+      | Some d ->
+         let users = Ezjsonm.(value d |> get_strings) in
+         Lwt_list.iter_s (fun user -> revoke store file_id user) users
+
+
+    let sync_with_remote store =
+      let%lwt local = match%lwt read_list store with
+        | None -> return []
+        | Some v -> return Ezjsonm.(get_strings (value v)) in
+      let%lwt remote = match%lwt read_list_remote () with
+        | None -> return []
+        | Some l -> return l in
+      let check_removed id =
+        if not (List.mem id remote) then
+          match%lwt read_meta store [id] with
+          | None -> return_unit
+          | Some v ->
+             let file_id = Ezjsonm.(value v
+               |> get_dict
+               |> List.assoc "file_id"
+               |> get_string) in
+             revoke_all store file_id
+        else return_unit in
+      Lwt_list.iter_s check_removed local
+      >>= fun () -> create_list store remote
+      >>= fun () -> read_list store
+
+    let headers =
+      let hdr = Cohttp.Header.init () in
+      Cohttp.Header.add hdr "Access-Control-Allow-Origin" "*" (* make chrome happy *)
+
     let respond_json ?status ?headers v =
       let body = Ezjsonm.to_string v in
       let status =
@@ -173,26 +211,45 @@ module Main (Stack:STACKV4) = struct
       | ["users"] ->
          Muse.get_users () >>= fun users ->
          Ezjsonm.strings users
-         |> respond_json
+         |> respond_json ~headers
       | "read" :: "meta" :: [id] ->
          (match%lwt read_meta store [id] with
          | None ->
-            Server.respond_error ~status:`Not_found ~body:"" ()
+            Server.respond_error ~headers ~status:`Not_found ~body:"" ()
          | Some v ->
-            respond_json v)
+            respond_json ~headers v)
       | "read" :: ["list"] ->
          (match%lwt read_list store with
          | None ->
-            Server.respond_error ~status:`Not_found ~body:"" ()
+            Server.respond_error ~headers ~status:`Not_found ~body:"" ()
          | Some v ->
-            respond_json v)
+            let l = Ezjsonm.(value v |> get_strings) in
+            let%lwt v = Lwt_list.map_s (fun id ->
+              match%lwt has_meta store id with
+              | None -> return (id, Ezjsonm.dict [])
+              | Some m ->
+                 let file_id = Ezjsonm.(value m
+                   |> get_dict
+                   |> List.assoc "file_id"
+                   |> get_string) in
+                 let%lwt delegations =
+                   match%lwt read_delegations store file_id with
+                   | None -> return []
+                   | Some d -> return Ezjsonm.(value d |> get_strings) in
+                 let info = Ezjsonm.([
+                   "file_id", string file_id;
+                   "delegations", strings delegations]
+                   |> dict) in
+                 return (id, info)) l in
+            let v = Ezjsonm.dict v in
+            respond_json ~headers v)
       | "read" :: "delegation" :: [file_id] ->
          (match%lwt read_delegations store file_id with
          | None ->
             let v = Ezjsonm.strings [] in
-            respond_json v
+            respond_json ~headers v
          | Some v ->
-            respond_json v)
+            respond_json ~headers v)
       | ["delegate"] ->
          json_of_body body >>= fun obj ->
          let dict = Ezjsonm.get_dict obj in
@@ -201,18 +258,18 @@ module Main (Stack:STACKV4) = struct
            Cohttp_lwt_body.to_string body
            >>= fun b ->
            Log.err (fun f -> f "bad request body format:%s" b);
-           Server.respond_error ~status:`Bad_request ~body:"" ()
+           Server.respond_error ~headers ~status:`Bad_request ~body:"" ()
          else
            let file_id = List.assoc "file_id" dict |> Ezjsonm.get_string in
            let user_id = List.assoc "user_id" dict |> Ezjsonm.get_string in
            Muse.delegate ~file_id ~user_id
            >>= function
            | None ->
-              Server.respond_error ~status:`Internal_server_error ~body:"" ()
+              Server.respond_error ~headers ~status:`Internal_server_error ~body:"" ()
            | Some _ ->
               delegate store user_id file_id
               >>= fun () ->
-              Server.respond ~status:`OK ~body:Cohttp_lwt_body.empty ())
+              Server.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty ())
       | ["revoke"] ->
          json_of_body body >>= fun obj ->
          let dict = Ezjsonm.get_dict obj in
@@ -221,20 +278,26 @@ module Main (Stack:STACKV4) = struct
            Cohttp_lwt_body.to_string body
            >>= fun b ->
            Log.err (fun f -> f "bad request body format:%s" b);
-           Server.respond_error ~status:`Bad_request ~body:"" ()
+           Server.respond_error ~headers ~status:`Bad_request ~body:"" ()
          else
            let file_id = List.assoc "file_id" dict |> Ezjsonm.get_string in
            let user_id = List.assoc "user_id" dict |> Ezjsonm.get_string in
            Muse.revoke ~file_id ~user_id
            >>= function
            | None ->
-              Server.respond_error ~status:`Internal_server_error ~body:"" ()
+              Server.respond_error ~headers ~status:`Internal_server_error ~body:"" ()
            | Some _ ->
               revoke store user_id file_id
               >>= fun () ->
-              Server.respond ~status:`OK ~body:Cohttp_lwt_body.empty ())
+              Server.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty ())
+      | ["sync"] ->
+         (match%lwt sync_with_remote store with
+         | None ->
+            Server.respond_error ~headers ~status:`Not_found ~body:"" ()
+         | Some v ->
+            respond_json ~headers v)
       | _ ->
-         Server.respond_error ~status:`Not_found ~body:"not implemented" ()
+         Server.respond_error ~headers ~status:`Not_found ~body:"not implemented" ()
   end
 
 
@@ -269,7 +332,8 @@ module Main (Stack:STACKV4) = struct
        fail_with "initialization failed"
 
 
-  let start stack () =
+  let start stack clock () =
+    Logs_reporter.(create () |> set_reporter);
     Store.Repo.create config >>= fun repo ->
     Store.master task repo >>= fun store ->
     init stack >>= fun () ->
