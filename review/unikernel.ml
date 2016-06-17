@@ -1,86 +1,68 @@
-(* Copyright (C) 2015, Thomas Leonard
- * See the README file for details. *)
-
 open Lwt
 open V1_LWT
 
-let () = Log.(set_log_level INFO)
-
-(* Never used, but needed to create the store. *)
-let task s = Irmin.Task.create ~date:0L ~owner:"Server" s
-
-module Context = struct
-  let v () = failwith "Context"
-end
-
-module Mirage_git_memory = Irmin_mirage.Irmin_git.Memory(Context)(Git.Inflate.None)
-module Store = Mirage_git_memory(Irmin.Contents.String)(Irmin.Ref.String)(Irmin.Hash.SHA1)
-let config = Irmin_git.config ()
-
-module Bundle = Tc.Pair(Store.Private.Slice)(Store.Hash)
-
-(* Split a URI into a list of path segments *)
-let split_path path =
-  let rec aux = function
-    | [] | [""] -> []
-    | hd::tl -> hd :: aux tl
-  in
-  List.filter (fun e -> e <> "")
-    (aux (Re_str.(split_delim (regexp_string "/") path)))
 
 module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
+
   module TCP  = Stack.TCPV4
-  (*
-  module TLS  = Tls_mirage.Make (TCP)
-  module X509 = Tls_mirage.X509 (Conf) (Clock)
-  *)
   module S = Cohttp_mirage.Server(TCP)
 
-  (* Take a new raw flow, perform a TLS handshake to get a TLS flow and call [f tls_flow].
-     When done, the underlying flow will be closed in all cases. *)
-  (*
-  let wrap_tls tls_config f flow =
-    let peer, port = TCP.get_dest flow in
-    Log.info "Connection from %s (client port %d)" (Ipaddr.V4.to_string peer) port;
-    TLS.server_of_flow tls_config flow >>= function
-    | `Error _ -> Log.warn "TLS failed"; TCP.close flow
-    | `Eof     -> Log.warn "TLS eof"; TCP.close flow
-    | `Ok flow  ->
-        Lwt.finalize
-          (fun () -> f flow)
-          (fun () -> TLS.close flow)
-   *)
+  module Context = struct let v () = return_none end
+  module Mirage_git_memory = Irmin_mirage.Irmin_git.Memory(Context)(Git.Inflate.None)
+  module Store = Mirage_git_memory(Irmin.Contents.String)(Irmin.Ref.String)(Irmin.Hash.SHA1)
 
-  let get_time () =
-    let open Clock in
-    let tm = time () |> gmtime in
-    Printf.sprintf "%d:%d:%d" tm.tm_hour tm.tm_min tm.tm_sec
+  let owner = "ucn.review"
+  let task s = Irmin.Task.create ~date:0L ~owner s
+  let config = Irmin_git.config ()
 
+  let src = Logs.Src.create owner
+  let stamp : Mtime.span Logs.Tag.def = Logs.Tag.def "stamp.tag" Mtime.pp_span
+
+  module Log = struct
+    let counter = Mtime.counter ()
+    let stamp_tag () =
+      Logs.Tag.add stamp (Mtime.count counter) Logs.Tag.empty
+
+    let app f = Logs.msg ~src Logs.App (fun m -> f (m ~tags:(stamp_tag ())))
+    let err f = Logs.msg ~src Logs.Error (fun m -> f (m ~tags:(stamp_tag ())))
+    let warn f = Logs.msg ~src Logs.Warning (fun m -> f (m ~tags:(stamp_tag ())))
+    let info f = Logs.msg ~src Logs.Info (fun m -> f (m ~tags:(stamp_tag ())))
+    let debug f = Logs.msg ~src Logs.Debug (fun m -> f (m ~tags:(stamp_tag ())))
+  end
+
+
+  let split_path path =
+    let rec aux = function
+      | [] | [""] -> []
+      | hd::tl -> hd :: aux tl
+    in
+    List.filter (fun e -> e <> "")
+                (aux (Re_str.(split_delim (regexp_string "/") path)))
 
   let headers =
     let hdr = Cohttp.Header.init () in
     Cohttp.Header.add hdr "Access-Control-Allow-Origin" "*" (* make chrome happy *)
 
   let respond_error status info =
-    Log.info "%s %s" (get_time ()) info;
+    Log.info (fun msgf -> msgf "%s" info);
     S.respond_error ~headers ~status ~body:info ()
 
 
   let list_reviews s body =
     let t = "list reviewed movie ids" in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
     match%lwt Store.read s ["list"] with
     | None -> respond_error `Not_implemented "no content"
     | Some s ->
-       let () = Log.info "%s %s" (get_time ()) ("respond " ^ s) in
+       Log.info (fun msgf -> msgf "%s" ("respond " ^ s));
        let body = Cohttp_lwt_body.of_string s in
        S.respond ~headers ~status:`OK ~body ()
 
 
   let add_to_reviewed s id =
     let t = Printf.sprintf "add movie %s to reviewed" id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     match%lwt Store.read s ["list"] with
     | None -> Lwt.fail_with "/list endpoint not initiated"
     | Some v ->
@@ -98,10 +80,10 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
 
   let delete_from_reviewed s id =
     let print_id_lst lst =
-      Log.info "%s %s" (get_time ()) (String.concat " " lst);
+      Log.info (fun msgf -> msgf "%s" (String.concat " " lst));
       lst in
     let t = Printf.sprintf "remove movie %s from reviewed" id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     match%lwt Store.read s ["list"] with
     | None -> Lwt.fail_with "/list endpoint not initiated"
     | Some v ->
@@ -121,7 +103,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   let create_review path s body =
     let id = List.hd path in
     let t = "create new review " ^ id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
     Cohttp_lwt_body.to_string body
     >>= Store.update s [id]
@@ -132,7 +114,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   let update_review path s body =
     let id = List.hd path in
     let t = "update a review " ^ id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
     Cohttp_lwt_body.to_string body
     >>= Store.update s [id]
@@ -142,12 +124,12 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   let read_review path s body =
     let id = List.hd path in
     let t = "read a review " ^ id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
     match%lwt Store.read s [id] with
     | None -> respond_error `Not_found ("no review for " ^ id)
     | Some v ->
-       let () = Log.info "%s %s" (get_time ()) ("respond: " ^ v) in
+       Log.info (fun msgf -> msgf "%s" ("respond: " ^ v));
        let body = Cohttp_lwt_body.of_string v in
        S.respond ~headers ~status:`OK ~body ()
 
@@ -155,7 +137,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   let delete_review path s body =
     let id = List.hd path in
     let t = "delete a review " ^ id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
     Store.remove s [id]
     >>= fun () -> delete_from_reviewed s id
@@ -174,13 +156,13 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   let read_meta_review path s body =
     let id = List.hd path in
     let t = "create meta data for a review " ^ id in
-    let () = Log.info "%s %s" (get_time ()) t in
+    Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
     match%lwt Store.read s [id] with
     | None -> respond_error `Not_found ("no review for " ^ id)
     | Some v ->
        meta_of_review v >>= fun meta ->
-       let () = Log.info "%s %s" (get_time ()) ("sending meta info:\n" ^ meta) in
+       Log.info (fun msgf -> msgf "%s" ("sending meta info:\n" ^ meta));
        let body = Cohttp_lwt_body.of_string meta in
        S.respond ~headers ~status:`OK ~body ()
 
@@ -201,57 +183,48 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
 
   let handle_request s (flow, conn) request body =
     let ip, port = TCP.get_dest flow in
-    Log.info "%s connection %s from %s:%d"
-             (get_time ())
-             (Cohttp.Connection.to_string conn)
-             (Ipaddr.V4.to_string ip) port;
+    Log.info (fun msgf -> msgf "connection %s from %s:%d"
+               (Cohttp.Connection.to_string conn)
+               (Ipaddr.V4.to_string ip) port);
     dispatch request s body
-
-
-  let dump s =
-    let s = s "export" in
-    Store.head s >>= function
-    | None -> failwith "dump: no head!"
-    | Some head ->
-    Store.Repo.export ~max:[head] (Store.repo s) >>= fun slice ->
-    let bundle = (slice, head) in
-    let buf = Cstruct.create (Bundle.size_of bundle) in
-    let rest = Bundle.write bundle buf in
-    assert (Cstruct.len rest = 0);
-    let path = "init_db.ml" in
-    Printf.printf "Writing %s...\n%!" path;
-    let ch = open_out_bin path in
-    Printf.fprintf ch "let init_db = %S" (Cstruct.to_string buf);
-    close_out ch;
-    Printf.printf "Wrote %s\n%!" path;
-    return_unit
-
-
-  let import s db =
-    let s = s "import" in
-    let buf = Mstruct.of_string db in
-    let (slice, head) = Bundle.read buf in
-    Store.Repo.import (Store.repo s) slice >>= function
-    | `Error -> failwith "Irmin import failed"
-    | `Ok ->
-    Store.fast_forward_head s head >>= function
-    | false -> failwith "Irmin import failed at FF"
-    | true -> return ()
-
 
   let init_db s =
     let t = "init db with '/list' -> [] " in
-    let () = Log.info "%s %s" (get_time ()) t in
-    let s = s t in
+    Log.info (fun msgf -> msgf "%s" t);    let s = s t in
     let v = Ezjsonm.to_string (`A []) in
     Store.update s ["list"]  v
 
 
+  let reporter () =
+    let report src lvl ~over k msgf =
+      let name = Logs.Src.name src in
+      let k _ = over (); k () in
+      let ppf = Format.std_formatter in
+      let pp_header ppf (l, h) =
+        let l = Logs.(match l with
+          | App -> "APP"
+          | Error -> "ERR"
+          | Warning -> "WARN"
+          | Info -> "INFO"
+          | Debug -> "DEBUG") in
+        Format.fprintf ppf "[%s][%s]" h l in
+      let with_stamp stamp fmt =
+        let s = match stamp with
+          | None -> 0. | Some span -> Mtime.to_s span in
+        Format.kfprintf k ppf ("%a [%7.2fs] @[" ^^ fmt ^^ "@]@.")
+          pp_header (lvl, name) s in
+      msgf @@ fun ?header ?tags fmt ->
+      match tags with
+      | Some t when Logs.Tag.mem stamp t ->
+         with_stamp (Logs.Tag.find stamp t) fmt
+      | None ->
+         Format.kfprintf k ppf ("%a @[" ^^ fmt ^^ "@]@.") pp_header (lvl, name) in
+    { Logs.report = report }
+
+
   let start stack conf _clock () =
-    (*
-    X509.certificate conf `Default >>= fun cert ->
-    let tls_config = Tls.Config.server ~certificates:(`Single cert) () in
-    *)
+    Logs.set_level (Some Logs.Info);
+    Logs.set_reporter (reporter ());
     Store.Repo.create config >>= fun repo ->
     Store.master task repo >>= fun s ->
     init_db s >>= fun () ->
