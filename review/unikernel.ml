@@ -2,7 +2,7 @@ open Lwt
 open V1_LWT
 
 
-module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
+module Main (Stack:STACKV4) = struct
 
   module TCP  = Stack.TCPV4
   module Server = Cohttp_mirage.Server(TCP)
@@ -11,33 +11,11 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   module Mirage_git_memory = Irmin_mirage.Irmin_git.Memory(Context)(Git.Inflate.None)
   module Store = Mirage_git_memory(Irmin.Contents.Json)(Irmin.Ref.String)(Irmin.Hash.SHA1)
 
-  let owner = "review.app"
+  let owner = "ucn.review"
   let task s = Irmin.Task.create ~date:0L ~owner s
-  let config = Irmin_git.config ()
+  let config = Irmin_mem.config ()
 
-  let src = Logs.Src.create owner
-  let stamp : Mtime.span Logs.Tag.def = Logs.Tag.def "stamp.tag" Mtime.pp_span
-
-  module Log = struct
-    let counter = Mtime.counter ()
-    let stamp_tag () =
-      Logs.Tag.add stamp (Mtime.count counter) Logs.Tag.empty
-
-    let app f = Logs.msg ~src Logs.App (fun m -> f (m ~tags:(stamp_tag ())))
-    let err f = Logs.msg ~src Logs.Error (fun m -> f (m ~tags:(stamp_tag ())))
-    let warn f = Logs.msg ~src Logs.Warning (fun m -> f (m ~tags:(stamp_tag ())))
-    let info f = Logs.msg ~src Logs.Info (fun m -> f (m ~tags:(stamp_tag ())))
-    let debug f = Logs.msg ~src Logs.Debug (fun m -> f (m ~tags:(stamp_tag ())))
-  end
-
-
-  let split_path path =
-    let rec aux = function
-      | [] | [""] -> []
-      | hd::tl -> hd :: aux tl
-    in
-    List.filter (fun e -> e <> "")
-                (aux (Re_str.(split_delim (regexp_string "/") path)))
+  module Log = (val Utils.src_stamp_log owner : Utils.LOG)
 
   let headers =
     let hdr = Cohttp.Header.init () in
@@ -53,6 +31,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     let p = data_path in
     Store.list s p >>= fun keys ->
     let id_lst = List.map (fun key -> key |> List.rev |> List.hd) keys in
+    Log.info (fun msgf -> msgf "respond: [%s]" (String.concat " " id_lst));
     let arr = Ezjsonm.(list string id_lst) in
     let body = Cohttp_lwt_body.of_string (Ezjsonm.to_string arr) in
     Server.respond ~headers ~status:`OK ~body ()
@@ -74,7 +53,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
   let update_review path s body =
     let id = List.hd path in
     let t = "create/update new review " ^ id in
-    Log.info (fun msgf -> msgf "%s" t);
+    Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
     let p = data_path @ [id] in
     catch (fun () ->
@@ -82,7 +61,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
       let v = Ezjsonm.from_string body in
       check_fields v >>= fun () ->
       Store.update s p v >>= fun () ->
-      Log.debug (fun msgf -> msgf "review created/updated");
+      Log.info (fun msgf -> msgf "review created/updated");
       Server.respond ~status:`OK ~headers ~body:Cohttp_lwt_body.empty ()
       ) (fun e ->
       Log.app (fun msgf -> msgf "exn: %s" (Printexc.to_string e));
@@ -95,13 +74,13 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
     let p = data_path @ [id] in
-    Store.read s [id] >>= function
+    Store.read s p >>= function
     | None ->
-       Log.debug (fun msgf -> msgf "not found review %s" id);
-       Server.respond_not_found ()
+       Log.info (fun msgf -> msgf "not found review %s" id);
+       Server.respond_error ~headers ~status:`Not_found ~body:"" ()
     | Some v ->
        let v = Ezjsonm.to_string v in
-       Log.debug (fun msgf -> msgf "respond: %s" v);
+       Log.info (fun msgf -> msgf "respond: %s" v);
        let body = Cohttp_lwt_body.of_string v in
        Server.respond ~headers ~status:`OK ~body ()
 
@@ -113,7 +92,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     let s = s t in
     let p = data_path @ [id] in
     Store.remove s p >>= fun () ->
-    Log.debug (fun msgf -> msgf "remove review %s" id);
+    Log.info (fun msgf -> msgf "remove review %s" id);
     Server.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty ()
 
 
@@ -131,25 +110,28 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
     let p = data_path @ [id] in
-    Store.read s [id] >>= function
+    Store.read s p >>= function
     | None ->
-       Log.debug (fun msgf -> msgf "not found review %s" id);
-       Server.respond_not_found ()
+       Log.info (fun msgf -> msgf "not found review %s" id);
+       Server.respond_error ~headers ~status:`Not_found ~body:"" ()
     | Some v ->
        meta_of_review v >>= fun meta ->
-       Log.debug (fun msgf -> msgf "respond metadata %s" meta);
+       Log.info (fun msgf -> msgf "respond metadata %s" meta);
        let body = Cohttp_lwt_body.of_string meta in
        Server.respond ~headers ~status:`OK ~body ()
 
 
   let dispatch request =
-    let path = Cohttp.Request.uri request |> Uri.path |> split_path in
+    let path =
+      Cohttp.Request.uri request
+      |> Uri.path
+      |> Astring.String.cuts ~empty:false ~sep:"/" in
     match path with
-    | "create" :: rst -> update_review rst
-    | "read" :: rst -> read_review rst
-    | "update" :: rst -> update_review rst
-    | "delete" :: rst -> remove_review rst
-    | "meta" :: rst -> read_meta_review rst
+    | "create" :: tl -> update_review tl
+    | "read" :: tl -> read_review tl
+    | "update" :: tl -> update_review tl
+    | "delete" :: tl -> remove_review tl
+    | "meta" :: tl -> read_meta_review tl
     | ["list"] -> list_reviews
     | _ ->
        fun _ _ ->
@@ -163,36 +145,10 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     dispatch request s body
 
 
-  let reporter () =
-    let report src lvl ~over k msgf =
-      let name = Logs.Src.name src in
-      let k _ = over (); k () in
-      let ppf = Format.std_formatter in
-      let pp_header ppf (l, h) =
-        let l = Logs.(match l with
-          | App -> "APP"
-          | Error -> "ERR"
-          | Warning -> "WARN"
-          | Info -> "INFO"
-          | Debug -> "DEBUG") in
-        Format.fprintf ppf "[%s][%s]" h l in
-      let with_stamp stamp fmt =
-        let s = match stamp with
-          | None -> 0. | Some span -> Mtime.to_s span in
-        Format.kfprintf k ppf ("%a [%7.2fs] @[" ^^ fmt ^^ "@]@.")
-          pp_header (lvl, name) s in
-      msgf @@ fun ?header ?tags fmt ->
-      match tags with
-      | Some t when Logs.Tag.mem stamp t ->
-         with_stamp (Logs.Tag.find stamp t) fmt
-      | None ->
-         Format.kfprintf k ppf ("%a @[" ^^ fmt ^^ "@]@.") pp_header (lvl, name) in
-    { Logs.report = report }
-
-
-  let start stack conf _clock () =
+  let start stack () =
+    Logs.set_reporter (Utils.src_stamp_reporter ());
     Logs.set_level (Some Logs.Info);
-    Logs.set_reporter (reporter ());
+
     Store.Repo.create config >>= fun repo ->
     Store.master task repo >>= fun s ->
     let http = Server.make ~conn_closed:ignore ~callback:(handle_request s) () in

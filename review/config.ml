@@ -33,20 +33,15 @@ let stack =
           (socket_stackv4 default_console [Ipaddr.V4.any])
 
 let main =
-  let libraries = ["irmin.git"; "mirage-http"; "irmin.mirage"; "tls.mirage";
-                   "pcap-format"; "cohttp.lwt-core"; "cstruct"; "ezjsonm";
-                   "logs"; "mtime.os"] in
-  foreign
-    ~libraries
-    ~packages:["irmin"; "mirage-http"; "nocrypto"; "mirage-flow"; "tls";
-               "mirage-types-lwt"; "channel"; "git"; "mirage-git";
-               "pcap-format"; "cohttp"; "cstruct"; "ezjsonm"; "lwt"]
-    ~deps:[abstract nocrypto]
-    "Unikernel.Main" (stackv4 @-> kv_ro @-> clock @-> job)
-
-let conf = crunch "conf"
+  let libraries = [
+    "logs";
+    "mtime.os";
+    "mirage-http";
+    "git";
+    "irmin.mirage"] in
+  foreign ~libraries ~deps:[abstract nocrypto] "Unikernel.Main" (stackv4 @-> job)
 
 let () =
-  register "irmin-www" [
-    main $ stack $ conf $ default_clock
+  register "review" [
+    main $ stack
   ]
