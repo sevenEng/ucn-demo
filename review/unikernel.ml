@@ -5,13 +5,13 @@ open V1_LWT
 module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
 
   module TCP  = Stack.TCPV4
-  module S = Cohttp_mirage.Server(TCP)
+  module Server = Cohttp_mirage.Server(TCP)
 
   module Context = struct let v () = return_none end
   module Mirage_git_memory = Irmin_mirage.Irmin_git.Memory(Context)(Git.Inflate.None)
-  module Store = Mirage_git_memory(Irmin.Contents.String)(Irmin.Ref.String)(Irmin.Hash.SHA1)
+  module Store = Mirage_git_memory(Irmin.Contents.Json)(Irmin.Ref.String)(Irmin.Hash.SHA1)
 
-  let owner = "ucn.review"
+  let owner = "review.app"
   let task s = Irmin.Task.create ~date:0L ~owner s
   let config = Irmin_git.config ()
 
@@ -43,156 +43,124 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     let hdr = Cohttp.Header.init () in
     Cohttp.Header.add hdr "Access-Control-Allow-Origin" "*" (* make chrome happy *)
 
-  let respond_error status info =
-    Log.info (fun msgf -> msgf "%s" info);
-    S.respond_error ~headers ~status ~body:info ()
-
+  let data_path = ["data"]
+  let log_path = ["logs"]
 
   let list_reviews s body =
-    let t = "list reviewed movie ids" in
-    Log.info (fun msgf -> msgf "%s" t);
+    let t = "list id of reviewed movies" in
+    Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
-    match%lwt Store.read s ["list"] with
-    | None -> respond_error `Not_implemented "no content"
-    | Some s ->
-       Log.info (fun msgf -> msgf "%s" ("respond " ^ s));
-       let body = Cohttp_lwt_body.of_string s in
-       S.respond ~headers ~status:`OK ~body ()
+    let p = data_path in
+    Store.list s p >>= fun keys ->
+    let id_lst = List.map (fun key -> key |> List.rev |> List.hd) keys in
+    let arr = Ezjsonm.(list string id_lst) in
+    let body = Cohttp_lwt_body.of_string (Ezjsonm.to_string arr) in
+    Server.respond ~headers ~status:`OK ~body ()
 
 
-  let add_to_reviewed s id =
-    let t = Printf.sprintf "add movie %s to reviewed" id in
-    Log.info (fun msgf -> msgf "%s" t);
-    match%lwt Store.read s ["list"] with
-    | None -> Lwt.fail_with "/list endpoint not initiated"
-    | Some v ->
-       match Ezjsonm.from_string v with
-       | `A v_lst ->
-          List.map Ezjsonm.get_string v_lst
-          |> fun lst -> begin
-                 if List.mem id lst then lst
-                 else id :: lst end
-          |> List.map Ezjsonm.string
-          |> fun new_v_lst ->
-          Store.update s ["list"] (Ezjsonm.to_string (`A new_v_lst))
-       | _ -> Lwt.fail_with "not a json array"
-
-
-  let delete_from_reviewed s id =
-    let print_id_lst lst =
-      Log.info (fun msgf -> msgf "%s" (String.concat " " lst));
-      lst in
-    let t = Printf.sprintf "remove movie %s from reviewed" id in
-    Log.info (fun msgf -> msgf "%s" t);
-    match%lwt Store.read s ["list"] with
-    | None -> Lwt.fail_with "/list endpoint not initiated"
-    | Some v ->
-       match Ezjsonm.from_string v with
-       | `A v_lst ->
-          v_lst
-          |> List.map Ezjsonm.get_string
-          |> print_id_lst
-          |> List.filter (fun x -> not (x = id))
-          |> print_id_lst
-          |> List.map Ezjsonm.string
-          |> fun new_v_lst ->
-          Store.update s ["list"] (Ezjsonm.to_string (`A new_v_lst))
-       | _ -> Lwt.fail_with "not a json array"
-
-
-  let create_review path s body =
-    let id = List.hd path in
-    let t = "create new review " ^ id in
-    Log.info (fun msgf -> msgf "%s" t);
-    let s = s t in
-    Cohttp_lwt_body.to_string body
-    >>= Store.update s [id]
-    >>= fun () -> add_to_reviewed s id
-    >>= fun () -> S.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty ()
+  let check_fields = function
+    | `O _ as d ->
+       let l = Ezjsonm.get_dict d in
+       (List.mem_assoc "id" l
+        && List.mem_assoc "title" l
+        && List.mem_assoc "rating" l
+        && List.mem_assoc "comment" l)
+       |> ignore;
+       return_unit
+    | _ as v ->
+       fail_invalid_arg "not json object"
 
 
   let update_review path s body =
     let id = List.hd path in
-    let t = "update a review " ^ id in
+    let t = "create/update new review " ^ id in
     Log.info (fun msgf -> msgf "%s" t);
     let s = s t in
-    Cohttp_lwt_body.to_string body
-    >>= Store.update s [id]
-    >>= S.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty
+    let p = data_path @ [id] in
+    catch (fun () ->
+      Cohttp_lwt_body.to_string body >>= fun body ->
+      let v = Ezjsonm.from_string body in
+      check_fields v >>= fun () ->
+      Store.update s p v >>= fun () ->
+      Log.debug (fun msgf -> msgf "review created/updated");
+      Server.respond ~status:`OK ~headers ~body:Cohttp_lwt_body.empty ()
+      ) (fun e ->
+      Log.app (fun msgf -> msgf "exn: %s" (Printexc.to_string e));
+      Server.respond ~status:`Bad_request ~headers ~body:Cohttp_lwt_body.empty ())
 
 
   let read_review path s body =
     let id = List.hd path in
-    let t = "read a review " ^ id in
-    Log.info (fun msgf -> msgf "%s" t);
+    let t = "read review " ^ id in
+    Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
+    let p = data_path @ [id] in
     match%lwt Store.read s [id] with
-    | None -> respond_error `Not_found ("no review for " ^ id)
+    | None ->
+       Log.debug (fun msgf -> msgf "not found review %s" id);
+       Server.respond_not_found ()
     | Some v ->
-       Log.info (fun msgf -> msgf "%s" ("respond: " ^ v));
+       let v = Ezjsonm.to_string v in
+       Log.debug (fun msgf -> msgf "respond: %s" v);
        let body = Cohttp_lwt_body.of_string v in
-       S.respond ~headers ~status:`OK ~body ()
+       Server.respond ~headers ~status:`OK ~body ()
 
 
-  let delete_review path s body =
+  let remove_review path s body =
     let id = List.hd path in
-    let t = "delete a review " ^ id in
-    Log.info (fun msgf -> msgf "%s" t);
+    let t = "remove review " ^ id in
+    Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
-    Store.remove s [id]
-    >>= fun () -> delete_from_reviewed s id
-    >>= S.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty
+    let p = data_path @ [id] in
+    Store.remove s p >>= fun () ->
+    Log.debug (fun msgf -> msgf "remove review %s" id);
+    Server.respond ~headers ~status:`OK ~body:Cohttp_lwt_body.empty ()
 
 
-  let meta_of_review v =
-    match Ezjsonm.from_string v with
+  let meta_of_review = function
     | `O obj ->
        let title = List.assoc "title" obj in
        let meta = ["source", `String "review"; "title", title] in
        return Ezjsonm.(dict meta |> to_string)
-    | _ -> Lwt.fail_with ("not a review object: " ^ v)
+    | _ -> Lwt.fail_with "never"
 
 
   let read_meta_review path s body =
     let id = List.hd path in
-    let t = "create meta data for a review " ^ id in
-    Log.info (fun msgf -> msgf "%s" t);
+    let t = "read metadata of a review " ^ id in
+    Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
+    let p = data_path @ [id] in
     match%lwt Store.read s [id] with
-    | None -> respond_error `Not_found ("no review for " ^ id)
+    | None ->
+       Log.debug (fun msgf -> msgf "not found review %s" id);
+       Server.respond_not_found ()
     | Some v ->
        meta_of_review v >>= fun meta ->
-       Log.info (fun msgf -> msgf "%s" ("sending meta info:\n" ^ meta));
+       Log.debug (fun msgf -> msgf "respond metadata %s" meta);
        let body = Cohttp_lwt_body.of_string meta in
-       S.respond ~headers ~status:`OK ~body ()
+       Server.respond ~headers ~status:`OK ~body ()
 
 
   let dispatch request =
     let path = Cohttp.Request.uri request |> Uri.path |> split_path in
     match path with
-    | "create" :: rst -> create_review rst
+    | "create" :: rst -> update_review rst
     | "read" :: rst -> read_review rst
     | "update" :: rst -> update_review rst
-    | "delete" :: rst -> delete_review rst
+    | "delete" :: rst -> remove_review rst
     | "meta" :: rst -> read_meta_review rst
     | ["list"] -> list_reviews
     | _ ->
        fun _ _ ->
-       respond_error `Bad_request ("no endpoint for " ^ String.concat "/" path)
+       Server.respond_error ~status:`Bad_request ~headers ~body:"" ()
 
 
   let handle_request s (flow, conn) request body =
     let ip, port = TCP.get_dest flow in
-    Log.info (fun msgf -> msgf "connection %s from %s:%d"
-               (Cohttp.Connection.to_string conn)
-               (Ipaddr.V4.to_string ip) port);
+    Log.app (fun msgf -> msgf "connection %s from %s:%d"
+      (Cohttp.Connection.to_string conn) (Ipaddr.V4.to_string ip) port);
     dispatch request s body
-
-  let init_db s =
-    let t = "init db with '/list' -> [] " in
-    Log.info (fun msgf -> msgf "%s" t);    let s = s t in
-    let v = Ezjsonm.to_string (`A []) in
-    Store.update s ["list"]  v
 
 
   let reporter () =
@@ -227,8 +195,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     Logs.set_reporter (reporter ());
     Store.Repo.create config >>= fun repo ->
     Store.master task repo >>= fun s ->
-    init_db s >>= fun () ->
-    let http = S.make ~conn_closed:ignore ~callback:(handle_request s) () in
-    Stack.listen_tcpv4 stack ~port:8443 (S.listen http);
+    let http = Server.make ~conn_closed:ignore ~callback:(handle_request s) () in
+    Stack.listen_tcpv4 stack ~port:8081 (Server.listen http);
     Stack.listen stack
 end
