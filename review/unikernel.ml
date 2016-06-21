@@ -95,7 +95,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
     let p = data_path @ [id] in
-    match%lwt Store.read s [id] with
+    Store.read s [id] >>= function
     | None ->
        Log.debug (fun msgf -> msgf "not found review %s" id);
        Server.respond_not_found ()
@@ -131,7 +131,7 @@ module Main (Stack:STACKV4) (Conf:KV_RO) (Clock:V1.CLOCK) = struct
     Log.app (fun msgf -> msgf "%s" t);
     let s = s t in
     let p = data_path @ [id] in
-    match%lwt Store.read s [id] with
+    Store.read s [id] >>= function
     | None ->
        Log.debug (fun msgf -> msgf "not found review %s" id);
        Server.respond_not_found ()

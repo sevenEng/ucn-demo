@@ -34,7 +34,7 @@ let stack =
 
 let main =
   let libraries = ["irmin.git"; "mirage-http"; "irmin.mirage"; "tls.mirage";
-                   "pcap-format"; "cohttp.lwt-core"; "cstruct"; "ezjsonm"; "lwt.ppx";
+                   "pcap-format"; "cohttp.lwt-core"; "cstruct"; "ezjsonm";
                    "logs"; "mtime.os"] in
   foreign
     ~libraries
