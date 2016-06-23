@@ -2,7 +2,7 @@ open Lwt
 open V1_LWT
 
 
-module Main (Stack:STACKV4) = struct
+module Main (Stack:STACKV4) (Clock:V1.CLOCK) = struct
 
   module TCP  = Stack.TCPV4
   module Server = Cohttp_mirage.Server(TCP)
@@ -15,7 +15,9 @@ module Main (Stack:STACKV4) = struct
   let task s = Irmin.Task.create ~date:0L ~owner s
   let config = Irmin_mem.config ()
 
-  module Log = (val Utils.src_stamp_log owner : Utils.LOG)
+  let src = Logs.Src.create owner
+  module Log = (val Logs.src_log src : Logs.LOG)
+  module Logs_reporter = Mirage_logs.Make(Clock)
 
   let headers =
     let hdr = Cohttp.Header.init () in
@@ -145,10 +147,10 @@ module Main (Stack:STACKV4) = struct
     dispatch request s body
 
 
-  let start stack () =
-    Logs.set_reporter (Utils.src_stamp_reporter ());
-    Logs.set_level (Some Logs.Info);
-
+  let start stack clock () =
+    (*Logs.set_reporter (Utils.src_stamp_reporter ());
+    Logs.set_level (Some Logs.Info);*)
+    Logs_reporter.(create () |> set_reporter);
     Store.Repo.create config >>= fun repo ->
     Store.master task repo >>= fun s ->
     let http = Server.make ~conn_closed:ignore ~callback:(handle_request s) () in

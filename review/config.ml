@@ -35,13 +35,13 @@ let stack =
 let main =
   let libraries = [
     "logs";
-    "mtime.os";
     "mirage-http";
+    "mirage-logs";
     "git";
     "irmin.mirage"] in
-  foreign ~libraries ~deps:[abstract nocrypto] "Unikernel.Main" (stackv4 @-> job)
+  foreign ~libraries ~deps:[abstract nocrypto] "Unikernel.Main" (stackv4 @-> clock @-> job)
 
 let () =
   register "review" [
-    main $ stack
+    main $ stack $ default_clock
   ]
