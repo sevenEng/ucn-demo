@@ -42,8 +42,9 @@ let make_server () =
        Printf.printf "respond file: %s\n%!" fname;
        Server.respond_file ~headers ~fname ()
     | _ ->
-       Printf.printf "unrecognized request: %s" path;
-       Server.respond_error ~headers ~status:`Not_found ~body:path ()
+       let fname = Server.resolve_local_file ~docroot:"." ~uri in
+       Printf.printf "try resolving local file: %s -> %s\n%!" path fname;
+       Server.respond_file ~headers ~fname ()
   in
   let ctx = Cohttp_lwt_unix_net.init () in
   let port = 8080 in
