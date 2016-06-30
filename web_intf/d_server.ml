@@ -6,6 +6,10 @@
 #require "ezjsonm";;
 #require "cohttp.lwt";;
 
+#use "d_review.ml";;
+
+open Lwt
+
 module Server = Cohttp_lwt_unix.Server
 
 let search_movie req body tl =
@@ -41,6 +45,9 @@ let make_server () =
        let fname = "index.html" in
        Printf.printf "respond file: %s\n%!" fname;
        Server.respond_file ~headers ~fname ()
+    | "review" :: tl ->
+       Printf.printf "get review request: %s\n%!" (String.concat "/" tl);
+       Review.dispatch tl req body
     | _ ->
        let fname = Server.resolve_local_file ~docroot:"." ~uri in
        Printf.printf "try resolving local file: %s -> %s\n%!" path fname;
