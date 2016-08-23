@@ -16,7 +16,8 @@ li {
 }
 
 button.create, button.update, button.remove,
-button.upload, button.encrypted {
+button.upload, button.encrypted,
+button.approve, button.reject, button.gk-remove {
 	margin: 0px 2px 0px 2px;
 	float: right;
 }

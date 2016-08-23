@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
     <!-- Optional theme -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap-theme.min.css" integrity="sha384-fLW2N01lMqjakBkx3l/M9EahuwpSfeNvV63J5ezn3uZzapT0u7EYsXMjQV+0En5r" crossorigin="anonymous">
-    
+
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" href="image/favicon.ico" type="image/x-icon">
     <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
@@ -28,15 +28,14 @@
       <!-- Nav tabs -->
       <ul class="nav nav-tabs" role="tablist">
         <li role="presentation" class="active"><a href="#review" aria-controls="review" role="tab" data-toggle="tab">Movie Review</a></li>
-        <li role="presentation"><a href="#pcap" aria-controls="pcap" role="tab" data-toggle="tab">Pcap</a></li>
-        <li role="presentation"><a href="#sqlite" aria-controls="sqlite" role="tab" data-toggle="tab">SQLite</a></li>
         <li role="presentation"><a href="#catalog" aria-controls="catalog" role="tab" data-toggle="tab">Data catalog</a></li>
+        <li role="presentation"><a href="#gatekeeper" aria-controls="gatekeeper" role="tab" data-toggle="tab">GateKeeper</a></li>
       </ul>
 
       <!-- Tab panes -->
       <div class="tab-content">
         <div role="tabpanel" class="tab-pane active container" id="review">
-          
+
           <div class="row">
             <div class="col-md-2"></div>
             <div class="col-md-8">
@@ -48,7 +47,7 @@
                   </button>
                 </span>
               </form><!-- /input-group -->
-            
+
 
               <div id="search-results">
                 <h4>Search Results <span class="badge" id="results-count">0</span></h4>
@@ -70,17 +69,7 @@
           </div>
 
         </div><!-- review tab -->
-        
-        <div role="tabpanel" class="tab-pane container" id="pcap">
 
-          <h>Pcap</h>
-
-        </div>
-        <div role="tabpanel" class="tab-pane container" id="sqlite">
-        
-          <h>SQLite</h>
-
-        </div>
         <div role="tabpanel" class="tab-pane container" id="catalog">
           <div class="row">
             <div class="col-md-2"></div>
@@ -96,20 +85,64 @@
                 <ul class="list-group"></ul>
               </div>
 
-              <div id="catalog-pcap">
-                <h4>Pcaps</h4>
-                <ul class="list-group"></ul>
-              </div>
+            </div>
+            <div class="col-md-2"></div>
+          </div>
+        </div><!-- data catalog tab -->
 
-              <div id="catalog-sqlite">
-                <h4>Sqlite data</h4>
-                <ul class="list-group"></ul>
+        <div role="tabpanel" class="tab-pane container" id="gatekeeper">
+          <div class="row">
+            <div class="col-md-2"></div>
+            <div class="col-md-8">
+
+              <div id="gk-approved">
+                <div class="catalog-banner">
+                  <h4>Approved Data Consumers</h4>
+                  <button type="button" class="btn btn-default populate approved">
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <ul class="list-group" for="approved"></ul>
               </div>
 
             </div>
             <div class="col-md-2"></div>
           </div>
-        </div><!-- data catalog tab -->
+          <div class="row">
+            <div class="col-md-2"></div>
+            <div class="col-md-8">
+
+              <div id="gk-rejected">
+                <div class="catalog-banner">
+                  <h4>Rejected Data Consumers</h4>
+                  <button type="button" class="btn btn-default populate rejected">
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <ul class="list-group" for="rejected"></ul>
+              </div>
+
+            </div>
+            <div class="col-md-2"></div>
+          </div>
+          <div class="row">
+            <div class="col-md-2"></div>
+            <div class="col-md-8">
+
+              <div id="gk-pending">
+                <div class="catalog-banner">
+                  <h4>Pending Requests</h4>
+                  <button type="button" class="btn btn-default populate pending">
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <ul class="list-group" for="pending"></ul>
+              </div>
+
+            </div>
+            <div class="col-md-2"></div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -138,6 +171,18 @@
         <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
       </button>
 
+      <button type="button" class="btn btn-default gatekeeper approve">
+        <span class="glyphicon glyphicon-ok-circle" aria-hidden="true"></span>
+      </button>
+
+      <button type="button" class="btn btn-default gatekeeper reject">
+        <span class="glyphicon glyphicon-ban-circle" aria-hidden="true"></span>
+      </button>
+
+      <button type="button" class="btn btn-default gatekeeper gk-remove">
+        <span class="glyphicon glyphicon-remove-circle" aria-hidden="true"></span>
+      </button>
+
       <li class="list-group-item form-ctn" style="display:none">
         <!-- <span class="glyphicon glyphicon-remove" "aria-hidden"="true"></span> -->
         <form class="form-horizontal review-form" role="form">
@@ -156,12 +201,12 @@
           </div>
           <div class="form-group">
             <label class="control-label col-sm-4" for="comment">Comment:</label>
-            <div class="col-sm-4"> 
+            <div class="col-sm-4">
               <textarea class="form-control" rows="5" id="comment"></textarea>
             </div>
             <div class="col-sm-4"></div>
           </div>
-          <div class="form-group"> 
+          <div class="form-group">
             <div class="col-sm-offset-4 col-sm-8">
               <button type="button" class="btn btn-default submit">Submit</button>
             </div>
@@ -179,7 +224,7 @@
               </select>
             </div>
           </div>
-          <div class="form-group"> 
+          <div class="form-group">
             <div class="col-sm-offset-4 col-sm-8">
               <button type="button" class="btn btn-default apply-delegate">Delegate</button>
             </div>
@@ -195,7 +240,7 @@
               </select>
             </div>
           </div>
-          <div class="form-group"> 
+          <div class="form-group">
             <div class="col-sm-offset-4 col-sm-8">
               <button type="button" class="btn btn-default apply-revoke">Revoke</button>
             </div>
