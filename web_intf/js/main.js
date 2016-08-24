@@ -250,7 +250,7 @@ Model.prototype = {
 
     _remove_item : function(arr, check_fn) {
 
-        var i = arr.length, inx = -1;
+        var i = arr.length - 1, inx = -1;
         for (; i >= 0; i--) {
             if (check_fn(arr[i])) {
                 inx = i;
@@ -273,8 +273,8 @@ Model.prototype = {
 
         var _this = this;
         var success = function() {
-            var check_fn = function(o) {
-                return o.id === id && o.domain === domain;
+            var check_fn = function(arg) {
+                return arg.id === id && arg.domain === domain;
             };
 
             var item = _this._remove_item(_this._gatekeeper.pending, check_fn);
@@ -296,8 +296,8 @@ Model.prototype = {
 
         var _this = this;
         var success = function() {
-            var check_fn = function(o) {
-                return o.id === id && o.domain === domain;
+            var check_fn = function(arg) {
+                return arg.id === id && arg.domain === domain;
             };
 
             var item = _this._remove_item(_this._gatekeeper.pending, check_fn);
@@ -323,8 +323,8 @@ Model.prototype = {
             else if (category === "rejected") arr = _this._gatekeeper.rejected;
             else arr = _this._gatekeeper.pending;
 
-            var check_fn = function(o) {
-                return o.id === id && o.domain === domain;
+            var check_fn = function(arg) {
+                return arg.id === id && arg.domain === domain;
             };
             _this._remove_item(arr, check_fn);
 
@@ -356,11 +356,13 @@ Model.prototype = {
         var obj = {path : category};
         var success = function(response) {
             var id_arr = JSON.parse(response);
+            console.log("populate " + category + ": " + id_arr);
             for (var i = 0; i < id_arr.length; i++) {
                 var id = id_arr[i];
                 var obj_tmp = {path : category + "/" + id};
                 var success_tmp = function(response_tmp) {
                     var domain_arr = JSON.parse(response_tmp);
+                    console.log("modle populate: " + response_tmp);
                     for (var j = 0; j < domain_arr.length; j++) {
                         var domain = domain_arr[j];
                         arr.push({id : id, domain : domain});
@@ -693,7 +695,7 @@ Model.prototype = {
 	    //setTimeout(_this.init_catalog_review, 1500);
 	    _this.init_catalog_review();
 	};
-	this._xhr.list_reviews(success);
+	//this._xhr.list_reviews(success);
     }
 };
 
@@ -775,6 +777,7 @@ function View(model, elements, templates) {
         else category = "pending";
 
         if (category !== "") {
+            console.log("populate: " + category);
             _this.buttonEvent.notify({
                 event : "gatekeeper-populate-category",
                 data  : {category : category}
@@ -786,7 +789,7 @@ function View(model, elements, templates) {
     this._elements.gkBtn.click(function() {
         var btn = $(this);
         var info = btn.attr("for"),
-            cls = btn.atrr("class");
+            cls = btn.attr("class");
 
         var category, id, domain, pos;
         pos = info.indexOf(" ");
@@ -803,7 +806,7 @@ function View(model, elements, templates) {
 
         if (event === "gatekeeper-remove-item") {
             _this.buttonEvent.notify({
-                event : event;
+                event : event,
                 data  : {
                     category : category,
                     id       : id,
@@ -812,7 +815,7 @@ function View(model, elements, templates) {
             });
         } else {
             _this.buttonEvent.notify({
-                event : event;
+                event : event,
                 data  : {
                     id     : id,
                     domain : domain
@@ -916,7 +919,7 @@ function View(model, elements, templates) {
                 id       : arg.data.id,
                 domain   : arg.data.domain});
             _this.create_gatekeeper_item({
-                category : "rejected";
+                category : "rejected",
                 id       : arg.data.id,
                 domain   : arg.data.domain
             });
@@ -927,7 +930,7 @@ function View(model, elements, templates) {
                 id       : arg.data.id,
                 domain   : arg.data.domain});
             _this.create_gatekeeper_item({
-                category : "approved";
+                category : "approved",
                 id       : arg.data.id,
                 domain   : arg.data.domain
             });
@@ -1186,7 +1189,7 @@ View.prototype = {
 
     remove_gatekeeper_item : function(obj) {
         var for_attr = obj.category + " " + obj.id + " " + obj.domain;
-        var li = this._elements.gateKeeperDiv.find("li[for=" + for_attr + "]");
+        var li = this._elements.gateKeeperDiv.find("li[for='" + for_attr + "']");
 
         li.remove();
     }
@@ -1245,6 +1248,7 @@ function Controller(model, view) {
 
 Controller.prototype = {
     gk_populate_category : function(obj) {
+        console.log("controller populate category");
         this._model.populate_gk_category(obj.category);
     },
 
