@@ -78,10 +78,10 @@
             <div class="col-md-2"></div>
             <div class="col-md-8">
 
-              <div id="catalog-review">
+              <div id="catalog-item">
                 <div class="catalog-banner">
-                  <h4>Movie Reviews</h4>
-                  <button type="button" class="btn btn-default sync review">
+                  <h4>Data Catalogs</h4>
+                  <button type="button" class="btn btn-default list-catalog">
                     <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
                   </button>
                 </div>
@@ -170,6 +170,10 @@
         <span class="glyphicon glyphicon-upload" aria-hidden="true"></span>
       </button>
 
+      <button type="button" class="btn btn-default catalog read">
+        <span class="glyphicon glyphicon-eye-open" aria-hidden="true"></span>
+      </button>
+
       <button type="button" class="btn btn-default catalog encrypted">
         <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
       </button>
@@ -217,6 +221,14 @@
         </form>
       </li>
 
+      <li class="list-group-item catalog-object-ctn" style="display:none">
+        <label class="control-label col-sm-4">Category:</label>
+        <div class="col-sm-8" for="category"></div>
+        <label class="control-label col-sm-4">Version:</label>
+        <div class="col-sm-8" for="version"></div>
+        <label class="control-label col-sm-4">Description:</label>
+        <div class="col-sm-8" for="description"></div>
+      </li>
       <li class="list-group-item catalog-item-ctn" style="display:none">
         <form class="form-horizontal delegate-form" role="form">
           <div class="form-group">

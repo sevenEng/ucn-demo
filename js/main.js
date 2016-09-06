@@ -132,9 +132,9 @@ XHR.prototype = {
 
     /* catalog */
 
-    sync_catalog_review: function(success, failure) {
+    sync_catalog: function(success, failure) {
 
-	var url = this._catalog + "/review/read/list";
+	var url = this._catalog + "/read/list";
 
 	var handler = this._handler(200, success, failure);
 
@@ -150,50 +150,50 @@ XHR.prototype = {
 	this._get(url, handler);
     },
 
-    read_review_meta: function(id, success, failure) {
+    read_catalog: function(id, success, failure) {
 
-        var url = this._catalog + "/review/read/meta/" + id;
+        var url = this._catalog + "/read/meta/" + id;
 
         var handler = this._handler(200, success, failure);
 
         this._get(url, handler);
     },
 
-    upload_review : function(data, success, failure) {
+    upload_catalog : function(data, success, failure) {
 
-	var url = this._catalog + "/review/upload";
-
-	var handler = this._handler(200, success, failure);
-
-	this._post(url, data, handler);
-    },
-
-    review_delegate : function(data, success, failure) {
-
-	var url = this._catalog + "/review/delegate";
+	var url = this._catalog + "/upload";
 
 	var handler = this._handler(200, success, failure);
 
 	this._post(url, data, handler);
     },
 
-    review_revoke : function(data, success, failure) {
+    catalog_delegate : function(data, success, failure) {
 
-	var url = this._catalog + "/review/revoke";
+	var url = this._catalog + "/delegate";
 
 	var handler = this._handler(200, success, failure);
 
 	this._post(url, data, handler);
     },
 
-    catalog_review_list : function(success, failure) {
+    catalog_revoke : function(data, success, failure) {
+
+	var url = this._catalog + "/revoke";
+
+	var handler = this._handler(200, success, failure);
+
+	this._post(url, data, handler);
+    },
+
+    /*catalog_review_list : function(success, failure) {
 
 	var url = this._catalog + "/review/read/list";
 
 	var handler = this._handler(200, success, failure);
 
 	this._get(url, handler);
-    },
+    },*/
 
 
     /* gatekeeper */
@@ -247,9 +247,9 @@ function Model (xhr) {
     this._search = [];
     this._review = [];
     this._last_search = "";
-    this._catalog = {
-	review : []
-    };
+
+    this._catalog = [];
+
     this._gatekeeper = {
         approved : [],
         rejected : [],
@@ -564,29 +564,23 @@ Model.prototype = {
 	return this._search.length;
     },
 
-    sync_catalog_review : function() {
+    sync_catalog : function() {
 	var _this = this;
 	var success = function(response) {
 	    var remote = JSON.parse(response);
-            console.log("sync_catalog_review: " + remote);
+            console.log("sync_catalog: " + remote);
 
-	    var local = _this._catalog.review;
+	    var local = _this._catalog;
 	    var i = 0, id;
 
 	    for (; i < remote.length; ++i) {
 		id = remote[i];
 		if (local.indexOf(id) == -1) {
-		    var j = 0, inx = -1, data;
-
-		    for (; j < _this._review.length; ++j) {
-			if (_this._review[j].id == id) inx = j;
-		    }
-
-		    if (inx == -1) data = {};
-		    else data = _this._review[inx];
+                    var data = {
+                        id : id
+                    };
 
 		    _this.catalogEvent.notify({
-			source : "review",
 			event : "create",
 			data : data
 		    });
@@ -598,16 +592,15 @@ Model.prototype = {
 		id = local[i];
 		if (-1 == remote.indexOf(id)) {
 		    _this.catalogEvent.notify({
-			source : "review",
 			event : "remove",
 			data : id
 		    });
 		}
 	    }
 
-	    _this._catalog.review = remote;
+	    _this._catalog = remote;
 	};
-	this._xhr.sync_catalog_review(success);
+	this._xhr.sync_catalog(success);
     },
 
     update_catalog_users : function() {
@@ -619,38 +612,64 @@ Model.prototype = {
 	this._xhr.update_catalog_users(success);
     },
 
-    upload_review : function(id) {
+
+    read_catalog : function(id) {
         var _this = this;
-        var review_id = Utils.ofCatalogId(id);
         var success = function(response) {
-            console.log("got meta: " + response);
-            var meta = JSON.parse(response);
+            console.log("read_catalog: " + response);
+            var data = JSON.parse(response);
+            var obj =  {
+                id : id,
+                data : data
+            };
 
-            var success = function(){
-                var obj = {
-		    id : id,
-		    file_id : meta.file_id
-	        };
+            _this.catalog.push(obj);
 
-                console.log("to notify uploaded: " + obj);
-
-	        _this.catalogEvent.notify({
-		    source : "review",
-		    event : "uploaded",
-		    data : obj,
-	        });
-            }
-            _this._xhr.upload_review(meta, success);
+            _this.catalogEvent.notify({
+                event : "read",
+                data  : obj
+            });
         };
-
-        this._xhr.read_review_meta(review_id, success);
+        _this._xhr.read_catalog(id, success);
     },
 
-    review_delegate : function(obj) {
+    upload_catalog : function(id) {
+        var _this = this;
+
+        var inx = -1, data;
+        for (var i = 0; i < _this.catalog.length; ++i) {
+            var tmp = _this.catalog[i];
+            if (tmp.id === id) {
+                inx = i;
+            }
+        }
+
+        if (inx === -1) {
+            _this.read_catalog(id);
+            data = _this.catalog[_this.catalog.length - 1];
+        } else {
+            data = _this.catalog[inx];
+        }
+
+        var success = function(){
+            var obj = {
+		id : id
+	    };
+
+            console.log("to notify uploaded: " + obj);
+
+	    _this.catalogEvent.notify({
+		event : "uploaded",
+		data : obj,
+	    });
+        }
+        _this._xhr.upload_review(data, success);
+    },
+
+    catalog_delegate : function(obj) {
 	var _this = this;
 	var success = function(){
 	    _this.catalogEvent.notify({
-		source : "review",
 		event : "delegated",
 		data : obj,
 	    });
@@ -662,11 +681,10 @@ Model.prototype = {
 	this._xhr.review_delegate(data, success);
     },
 
-    review_revoke : function(obj) {
+    catalog_revoke : function(obj) {
 	var _this = this;
 	var success = function(){
 	    _this.catalogEvent.notify({
-		source : "review",
 		event : "revoked",
 		data : obj,
 	    });
@@ -871,12 +889,13 @@ function View(model, elements, templates) {
         }
     });
 
-    this._elements.catReviewDiv.find("button.sync").click(function(){
-	//$(this).hide();
-	_this.buttonEvent.notify({
-	    event : "catalog-review-sync",
-	    data : {}
-	});
+
+    /* catalog */
+
+    this._elements.catalogSyncBtn.click(function(){
+        _this.buttonEvent.notify({
+            event: "catalog-sync"
+        });
     });
 
     this._elements.encryptBtn.click(function(){
@@ -884,10 +903,21 @@ function View(model, elements, templates) {
 	id = btn.attr("for");
 
 	_this.buttonEvent.notify({
-	    event : "catalog-review-upload",
+	    event : "catalog-upload",
 	    data : id
 	});
     });
+
+    this._elements.catalogBtn.click(
+        var btn = $(this),
+        id = btn.attr("for");
+
+        _this.buttonEvent.notify({
+            event : "catalog-read",
+            data  : id
+        });
+    );
+
     /* notification from model, need rerender */
 
     this._model.reviewEvent.register(function(sender, arg){
@@ -922,33 +952,27 @@ function View(model, elements, templates) {
     });
 
     this._model.catalogEvent.register(function(sender, arg){
-	switch(arg.source) {
-	case "review":
-	    switch(arg.event) {
-	    case "remove":
-		_this.remove_catalog_review(arg.data);
-		break;
-	    case "create":
-		_this.create_catalog_review(arg.data);
-		break;
-	    case "read":
-		_this.read_catalog_review(arg.data);
-		break;
-	    case "uploaded":
-		_this.catalog_review_uploaded(arg.data);
-		break;
-	    case "delegated":
-		_this.catalog_review_delegated(arg.data);
-		break;
-	    case "revoked":
-		_this.catalog_review_revoked(arg.data);
-		break;
-	    default:
-		console.log("not matched catalog review event" + arg.event);
-	    }
+	switch(arg.event) {
+	case "remove":
+	    _this.remove_catalog(arg.data);
+	    break;
+	case "create":
+	    _this.create_catalog(arg.data);
+	    break;
+	case "read":
+	    _this.catalog_read(arg.data);
+	    break;
+	case "uploaded":
+	    _this.catalog_uploaded(arg.data);
+	    break;
+	case "delegated":
+	    _this.catalog_delegated(arg.data);
+	    break;
+	case "revoked":
+	    _this.catalog_revoked(arg.data);
 	    break;
 	default:
-	    console.log("not matched catalog event source: " + arg.source);
+	    console.log("not matched catalog event" + arg.event);
 	}
     });
 
@@ -1091,23 +1115,29 @@ View.prototype = {
     },
 
     enable_catalog_sync : function() {
-	this._elements.catReviewDiv.find("button.sync").show();
+	this._elements.catalogDiv.find("button.sync").show();
     },
 
-    create_catalog_review : function(review) {
+    create_catalog : function(data) {
 	var _this = this;
-	var id = Utils.toCatalogId(review.id),
-	li = this.new_li(id, review.title),
+	var id = data.id,
+	li = this.new_li(id, id),
 	ctn = this._templates.find("li.catalog-item-ctn").clone(true),
-	ebtn = this._templates.find("button.upload").clone(true);
+        dsp = this._templates.find("li.catalog-object-ctn").clone(true);
+	ebtn = this._templates.find("button.upload").clone(true),
+        rbtn = this._templates.find("button.read").clone(true);
 
 	var i = 0,
 	users = this._model.get_users(),
 	dselect = ctn.find("select.delegate");
 
 	ebtn.attr("for", id);
+        rbtn.attr("for", id);
 	li.append(ebtn);
+        li.append(rbtn);
+
 	ctn.attr("for", id);
+        dsp.attr("for", id);
 	for(; i < users.length; ++i) {
 	    var u = users[i];
 	    var option = $("<option></option>").attr("value", u).text(u);
@@ -1117,8 +1147,8 @@ View.prototype = {
 	    var btn = $(this),
 	    id = btn.attr("for");
 
-	    var file_id = _this._elements.catReviewDiv.find("#" + id).attr("file-id"),
-	    user_id = _this._elements.catReviewDiv.find("li[for=" + id + "] select.delegate").val();
+	    var file_id = _this._elements.catalogDiv.find("#" + id).attr("file-id"),
+	    user_id = _this._elements.catalogDiv.find("li.catalog-item-ctn[for=" + id + "] select.delegate").val();
 
 	    var obj = {
 		id : id,
@@ -1129,7 +1159,7 @@ View.prototype = {
 
 	    if (user_id !== "0") {
 		_this.buttonEvent.notify({
-		    event : "catalog-review-delegate",
+		    event : "catalog-delegate",
 		    data : obj,
 		});}
 	});
@@ -1137,8 +1167,8 @@ View.prototype = {
 	    var btn = $(this),
 	    id = btn.attr("for");
 
-	    var file_id = _this._elements.catReviewDiv.find("#" + id).attr("file-id"),
-	    user_id = _this._elements.catReviewDiv.find("li[for=" + id + "] select.revoke").val();
+	    var file_id = _this._elements.catalogDiv.find("#" + id).attr("file-id"),
+	    user_id = _this._elements.catalogDiv.find("li.catalog-item-ctn[for=" + id + "] select.revoke").val();
 
 	    var obj = {
 		id : id,
@@ -1149,20 +1179,19 @@ View.prototype = {
 
 	    if (user_id !== "0") {
 		_this.buttonEvent.notify({
-		    event : "catalog-review-revoke",
+		    event : "catalog-revoke",
 		    data : obj,
 		});}
 	});
 
-	this._elements.catReviewDiv.find("ul").append(li, ctn);
+	this._elements.catalogDiv.find("ul").append(li, dsp, ctn);
     },
 
-    catalog_review_uploaded : function(obj) {
-	var li = this._elements.catReviewDiv.find("#" + obj.id),
+    catalog_uploaded : function(obj) {
+	var li = this._elements.catalogDiv.find("#" + obj.id),
 	okbtn = this._templates.find("button.encrypted").clone(true),
 	ubtn = this._templates.find("button.update").clone(true);
 
-	li.attr("file-id", obj.file_id);
 	li.find("button.upload").remove();
 	okbtn.attr("for", obj.id);
 	ubtn.attr("for", obj.id);
@@ -1170,9 +1199,9 @@ View.prototype = {
 	li.append(okbtn);
     },
 
-    catalog_review_delegated : function(obj) {
+    catalog_delegated : function(obj) {
 	var id = obj.id,
-	ctn = this._elements.catReviewDiv.find("li[for=" + id + "]"),
+	ctn = this._elements.catalogDiv.find("li.catalog-item-ctn[for=" + id + "]"),
 	option = ctn.find("select.delegate option[value=" + obj.user_id + "]"),
 	rselect = ctn.find("select.revoke");
 
@@ -1180,31 +1209,24 @@ View.prototype = {
 	rselect.append(option);
     },
 
-    read_catalog_review : function(data) {
-	this.create_catalog_review(data.review);
+    catalog_read : function(obj) {
+        var id = obj.id;
+        var file_id = obj.data.file_id;
+        var meta = obj.data.data;
 
-	var id = Utils.toCatalogId(data.review.id);
-	var obj = {
-	    id : id,
-	    file_id : data.info.file_id
-	};
-	this.catalog_review_uploaded(obj);
+        var li = this._elements.catalogDiv.find("#" + id);
+        var dsp = this._elements.catalogDiv.find("li.catalog-object-ctn[for=" + id + "]");
 
-	var i = 0;
-	for (; i < data.info.delegations.length; ++i) {
-	    var user_id = data.info.delegations[i];
-	    obj = {
-		id : id,
-		user_id : user_id
-	    };
-
-	    this.catalog_review_delegated(obj);
-	}
+        li.attr("file-id", file_id);
+        dsp.find("div[for=category]").text(meta.category);
+        dsp.find("div[for=version]").text(meta.version);
+        dsp.find("div[for=description]").text(meta.description);
+        dsp.toggle();
     },
 
-    catalog_review_revoked : function(obj) {
+    catalog_revoked : function(obj) {
 	var id = obj.id,
-	ctn = this._elements.catReviewDiv.find("li[for=" + id + "]"),
+	ctn = this._elements.catalogDiv.find("li.catalog-item-ctn[for=" + id + "]"),
 	option = ctn.find("select.revoke option[value=" + obj.user_id + "]"),
 	dselect = ctn.find("select.delegate");
 
@@ -1266,17 +1288,20 @@ function Controller(model, view) {
 	case "search":
 	    _this._model.search_results(arg.data);
 	    break;
-	case "catalog-review-sync":
-	    _this.catalog_review_sync();
+	case "catalog-sync":
+	    _this.catalog_sync();
 	    break;
-	case "catalog-review-upload":
-	    _this.catalog_review_upload(arg.data);
+        case "catalog-read":
+            _this.catalog_read(arg.data);
+            break;
+	case "catalog-upload":
+	    _this.catalog_upload(arg.data);
 	    break;
-	case "catalog-review-delegate":
-	    _this.catalog_review_delegate(arg.data);
+	case "catalog-delegate":
+	    _this.catalog_delegate(arg.data);
 	    break;
-	case "catalog-review-revoke":
-	    _this.catalog_review_revoke(arg.data);
+	case "catalog-revoke":
+	    _this.catalog_revoke(arg.data);
 	    break;
         case "gatekeeper-populate-category":
             _this.gk_populate_category(arg.data);
@@ -1332,21 +1357,25 @@ Controller.prototype = {
         this._model.list_reviews();
     },
 
-    catalog_review_sync : function() {
+    catalog_sync : function() {
 	this._model.update_catalog_users();
-	this._model.sync_catalog_review();
+	this._model.sync_catalog();
     },
 
-    catalog_review_upload : function(obj) {
-	this._model.upload_review(obj);
+    catalog_read : function(obj) {
+	this._model.read_catalog(obj);
     },
 
-    catalog_review_delegate : function(obj) {
-	this._model.review_delegate(obj);
+    catalog_upload : function(obj) {
+	this._model.upload_catalog(obj);
     },
 
-    catalog_review_revoke : function(obj) {
-	this._model.review_revoke(obj);
+    catalog_delegate : function(obj) {
+	this._model.catalog_delegate(obj);
+    },
+
+    catalog_revoke : function(obj) {
+	this._model.catalog_revoke(obj);
     },
 };
 
@@ -1365,9 +1394,11 @@ Controller.prototype = {
 
 	submitBtn : $("button.submit"),
 	sideBtn : $("button.side"),
-	encryptBtn : $("button.upload"),
 
-	catReviewDiv : $("#catalog-review"),
+	encryptBtn : $("button.upload"),
+        catalogBtn : $("button.read"),
+	catalogDiv : $("#catalog-item"),
+        catalogSyncBtn : $("button.list-catalog"),
 
         populateBtn : $("button.populate"),
         gkBtn : $("button.gatekeeper"),
