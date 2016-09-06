@@ -72,6 +72,9 @@ function XHR() {
 }
 
 XHR.prototype = {
+
+    /* review */
+
     create_review : function(r, success, failure) {
 
 	var url = this._review + "/create/" + r.id;
@@ -126,9 +129,12 @@ XHR.prototype = {
 	this._get(url, handler);
     },
 
+
+    /* catalog */
+
     sync_catalog_review: function(success, failure) {
 
-	var url = this._catalog + "/review/sync";
+	var url = this._catalog + "/review/read/list";
 
 	var handler = this._handler(200, success, failure);
 
@@ -137,20 +143,29 @@ XHR.prototype = {
 
     update_catalog_users : function(success, failure) {
 
-	var url = this._catalog + "/review/users";
+	var url = this._catalog + "/users";
 
 	var handler = this._handler(200, success, failure);
 
 	this._get(url, handler);
     },
 
-    upload_review : function(id, success, failure) {
+    read_review_meta: function(id, success, failure) {
 
-	var url = this._catalog + "/review/read/meta/" + id;
+        var url = this._catalog + "/review/read/meta/" + id;
+
+        var handler = this._handler(200, success, failure);
+
+        this._get(url, handler);
+    },
+
+    upload_review : function(data, success, failure) {
+
+	var url = this._catalog + "/review/upload";
 
 	var handler = this._handler(200, success, failure);
 
-	this._post(url, {}, handler);
+	this._post(url, data, handler);
     },
 
     review_delegate : function(data, success, failure) {
@@ -179,6 +194,9 @@ XHR.prototype = {
 
 	this._get(url, handler);
     },
+
+
+    /* gatekeeper */
 
     approve_access : function(data, success, failure) {
 
@@ -230,9 +248,8 @@ function Model (xhr) {
     this._review = [];
     this._last_search = "";
     this._catalog = {
-	review : [],
-	pcap : [],
-	sqlite : [] };
+	review : []
+    };
     this._gatekeeper = {
         approved : [],
         rejected : [],
@@ -347,6 +364,7 @@ Model.prototype = {
         else if (category === "rejected") arr = this._gatekeeper.rejected;
         else arr = this._gatekeeper.pending;
 
+        //bug to fix!!! remove the list in the view but not in the model
         while(arr.length !== 0) {
             var tmp = arr.pop();
             this.remove_gk_item(category, tmp.id, tmp.domain);
@@ -362,7 +380,7 @@ Model.prototype = {
                 var obj_tmp = {path : category + "/" + id};
                 var success_tmp = function(response_tmp) {
                     var domain_arr = JSON.parse(response_tmp);
-                    console.log("modle populate: " + response_tmp);
+                    console.log("domains: " + response_tmp);
                     for (var j = 0; j < domain_arr.length; j++) {
                         var domain = domain_arr[j];
                         arr.push({id : id, domain : domain});
@@ -380,6 +398,17 @@ Model.prototype = {
             }
         };
         this._xhr.list_items(obj, success);
+    },
+
+    list_reviews : function() {
+        var _this = this;
+        var success = function(response){
+	    var i = 0, lst = JSON.parse(response);
+            for (; i < lst.length; ++i) {
+		_this.read_review(lst[i]);
+	    }
+        };
+        this._xhr.list_reviews(success);
     },
 
     create_review : function(id, title, rating, comment) {
@@ -538,8 +567,10 @@ Model.prototype = {
     sync_catalog_review : function() {
 	var _this = this;
 	var success = function(response) {
-	    var remote = JSON.parse(response),
-	    local = _this._catalog.review;
+	    var remote = JSON.parse(response);
+            console.log("sync_catalog_review: " + remote);
+
+	    var local = _this._catalog.review;
 	    var i = 0, id;
 
 	    for (; i < remote.length; ++i) {
@@ -589,21 +620,30 @@ Model.prototype = {
     },
 
     upload_review : function(id) {
-	var _this = this;
-	var success = function(response) {
-	    var meta = JSON.parse(response),
-	    obj = {
-		id : Utils.toCatalogId(id),
-		file_id : meta.file_id,
-	    };
+        var _this = this;
+        var review_id = Utils.ofCatalogId(id);
+        var success = function(response) {
+            console.log("got meta: " + response);
+            var meta = JSON.parse(response);
 
-	    _this.catalogEvent.notify({
-		source : "review",
-		event : "uploaded",
-		data : obj,
-	    });
-	};
-	this._xhr.upload_review(id, success);
+            var success = function(){
+                var obj = {
+		    id : id,
+		    file_id : meta.file_id
+	        };
+
+                console.log("to notify uploaded: " + obj);
+
+	        _this.catalogEvent.notify({
+		    source : "review",
+		    event : "uploaded",
+		    data : obj,
+	        });
+            }
+            _this._xhr.upload_review(meta, success);
+        };
+
+        this._xhr.read_review_meta(review_id, success);
     },
 
     review_delegate : function(obj) {
@@ -723,6 +763,13 @@ function View(model, elements, templates) {
 	}
     });
 
+
+    this._elements.listReview.click(function(){
+        _this.buttonEvent.notify({
+            event: "list-review"
+        });
+    });
+
     //submit button should have "for=`id'" attribute
     this._elements.submitBtn.click(function(){
 	var id = $(this).attr("for");
@@ -838,7 +885,7 @@ function View(model, elements, templates) {
 
 	_this.buttonEvent.notify({
 	    event : "catalog-review-upload",
-	    data : Utils.ofCatalogId(id)
+	    data : id
 	});
     });
     /* notification from model, need rerender */
@@ -1204,6 +1251,9 @@ function Controller(model, view) {
 
     this._view.buttonEvent.register(function(sender, arg){
 	switch(arg.event) {
+        case "list-review":
+            _this.list_reviews();
+            break;
 	case "create":
 	    _this.create_review(arg.data);
 	    break;
@@ -1278,8 +1328,12 @@ Controller.prototype = {
 	this._model.add_search_item(obj.id, obj.title);
     },
 
+    list_reviews : function(obj) {
+        this._model.list_reviews();
+    },
+
     catalog_review_sync : function() {
-	//this._model.update_catalog_users();
+	this._model.update_catalog_users();
 	this._model.sync_catalog_review();
     },
 
@@ -1301,15 +1355,20 @@ Controller.prototype = {
     var xhr = new XHR(),
     model = new Model(xhr),
     view = new View(model, {
-	searchUl : $("#search-results > ul"),
-	reviewUl : $("#reviewed > ul"),
-	catReviewDiv : $("#catalog-review"),
-	searchBadge : $("#search-results span.badge"),
-	reviewBadge : $("#reviewed span.badge"),
 	searchBtn : $("#search"),
+
+	searchUl : $("#search-results > ul"),
+	searchBadge : $("#search-results span.badge"),
+	reviewUl : $("#reviewed > ul"),
+	reviewBadge : $("#reviewed span.badge"),
+        listReview: $("button.list-review"),
+
 	submitBtn : $("button.submit"),
 	sideBtn : $("button.side"),
 	encryptBtn : $("button.upload"),
+
+	catReviewDiv : $("#catalog-review"),
+
         populateBtn : $("button.populate"),
         gkBtn : $("button.gatekeeper"),
         gateKeeperDiv : $("#gatekeeper")

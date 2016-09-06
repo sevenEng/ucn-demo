@@ -5,6 +5,16 @@ module Client = Cohttp_lwt_unix.Client
 
 let headers = Cohttp.Header.init_with "Access-Control-Allow-Origin" "*"
 
+let ip = "10.0.0.1"
+let port = 8080
+
+let gk_ip = "10.0.0.254"
+let bridge_ip = "10.0.0.2"
+
+let gk_port = 8080
+let review_port = 10011
+let catalog_port = 10012
+
 
 module type ENDPOINT = sig
     val host :  string
@@ -12,21 +22,11 @@ module type ENDPOINT = sig
 end
 
 module GateKeeper = struct
-    let host = "10.0.0.254"
-    let port = 8080
-
-    let print_response res body =
-      let status =
-        Cohttp.Response.status res
-        |> Cohttp.Code.string_of_status in
-      Cohttp_lwt_body.to_string body >>= fun body ->
-      Printf.printf "GateKeeper: %s %s\n%!" status body;
-      return_unit
 
     let dispatch req body tl =
       let path = String.concat "/" tl in
       let () = Printf.printf "GateKeeper: %s\n%!" path in
-      let uri = Uri.make ~scheme:"http" ~host:host ~port:port ~path () in
+      let uri = Uri.make ~scheme:"http" ~host:gk_ip ~port:gk_port ~path () in
       match Cohttp.Request.meth req with
       | `GET ->
          Client.get uri
@@ -35,6 +35,39 @@ module GateKeeper = struct
       | _ as m ->
          let m = Cohttp.Code.string_of_method m in
          Lwt.fail_with ("[GK] unsupported http metohd: " ^ m)
+end
+
+module Review = struct
+
+    let dispatch req body tl =
+      let path = String.concat "/" tl in
+      let () = Printf.printf "Review: %s\n%!" path in
+      let uri = Uri.make ~scheme:"https" ~host:bridge_ip ~port:review_port ~path () in
+      match Cohttp.Request.meth req with
+      | `GET ->
+         Client.get uri
+      | `POST ->
+         Client.post ~body uri
+      | _ as m ->
+         let m = Cohttp.Code.string_of_method m in
+         Lwt.fail_with ("[Review] unsupported http metohd: " ^ m)
+end
+
+
+module Catalog = struct
+
+    let dispatch req body tl =
+      let path = String.concat "/" tl in
+      let () = Printf.printf "Catalog: %s\n%!" path in
+      let uri = Uri.make ~scheme:"https" ~host:bridge_ip ~port:catalog_port ~path () in
+      match Cohttp.Request.meth req with
+      | `GET ->
+         Client.get uri
+      | `POST ->
+         Client.post ~body uri
+      | _ as m ->
+         let m = Cohttp.Code.string_of_method m in
+         Lwt.fail_with ("[Catalog] unsupported http metohd: " ^ m)
 end
 
 
@@ -74,6 +107,22 @@ let make_server conf =
          |> Cohttp.Header.to_list in
        let headers = Cohttp.Header.add_list headers hdr_lst in
        Server.respond ~headers ~status ~body ()
+    | "review" :: tl ->
+       Review.dispatch req body tl >>= fun (res, body) ->
+       let status = Cohttp.Response.status res in
+       let hdr_lst =
+         Cohttp.Response.headers res
+         |> Cohttp.Header.to_list in
+       let headers = Cohttp.Header.add_list headers hdr_lst in
+       Server.respond ~headers ~status ~body ()
+    | "catalog" :: tl ->
+       Catalog.dispatch req body tl >>= fun (res, body) ->
+       let status = Cohttp.Response.status res in
+       let hdr_lst =
+         Cohttp.Response.headers res
+         |> Cohttp.Header.to_list in
+       let headers = Cohttp.Header.add_list headers hdr_lst in
+       Server.respond ~headers ~status ~body ()
     | [] | ["index.html"] ->
        let fname = "index.html" in
        Printf.printf "respond file: %s\n%!" fname;
@@ -83,11 +132,12 @@ let make_server conf =
        Printf.printf "try resolving local file: %s -> %s\n%!" path fname;
        Server.respond_file ~headers ~fname ()
   in
-  let ctx = Cohttp_lwt_unix_net.init () in
-  let port = 8080 in
+
+  Conduit_lwt_unix.init ~src:ip () >>= fun conduit_ctx ->
+  let ctx = Cohttp_lwt_unix_net.init ~ctx:conduit_ctx () in
   let mode = `TCP (`Port port) in
   let t = Server.make ~callback () in
-  Printf.printf "listening on localhost:%d\n%!" port;
+  Printf.printf "listening on %s:%d\n%!" ip port;
   Server.create ~ctx ~mode t
 
 
