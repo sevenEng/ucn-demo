@@ -134,7 +134,7 @@ XHR.prototype = {
 
     sync_catalog: function(success, failure) {
 
-	var url = this._catalog + "/read/list";
+	var url = this._catalog + "/list";
 
 	var handler = this._handler(200, success, failure);
 
@@ -615,30 +615,46 @@ Model.prototype = {
 
     read_catalog : function(id) {
         var _this = this;
-        var success = function(response) {
-            console.log("read_catalog: " + response);
-            var data = JSON.parse(response);
-            var obj =  {
-                id : id,
-                data : data
+
+        var inx = -1, obj;
+        for (var i = 0; i < _this._catalog.length; ++i) {
+            var tmp = _this._catalog[i];
+            if (tmp.id === id) inx = i;
+        }
+
+        if (inx === -1) {
+            var success = function(response) {
+                console.log("read_catalog: " + response);
+                var data = JSON.parse(response);
+                var obj =  {
+                    id : id,
+                    data : data
+                };
+
+                _this._catalog.push(obj);
+
+                _this.catalogEvent.notify({
+                    event : "read",
+                    data  : obj
+                });
             };
 
-            _this.catalog.push(obj);
-
+            _this._xhr.read_catalog(id, success);
+        } else {
+            obj = _this._catalog[inx];
             _this.catalogEvent.notify({
                 event : "read",
                 data  : obj
             });
-        };
-        _this._xhr.read_catalog(id, success);
+        }
     },
 
     upload_catalog : function(id) {
         var _this = this;
 
         var inx = -1, data;
-        for (var i = 0; i < _this.catalog.length; ++i) {
-            var tmp = _this.catalog[i];
+        for (var i = 0; i < _this._catalog.length; ++i) {
+            var tmp = _this._catalog[i];
             if (tmp.id === id) {
                 inx = i;
             }
@@ -646,9 +662,9 @@ Model.prototype = {
 
         if (inx === -1) {
             _this.read_catalog(id);
-            data = _this.catalog[_this.catalog.length - 1];
+            data = _this._catalog[_this.catalog.length - 1].data;
         } else {
-            data = _this.catalog[inx];
+            data = _this._catalog[inx].data;
         }
 
         var success = function(){
@@ -663,7 +679,7 @@ Model.prototype = {
 		data : obj,
 	    });
         }
-        _this._xhr.upload_review(data, success);
+        _this._xhr.upload_catalog(data, success);
     },
 
     catalog_delegate : function(obj) {
@@ -678,7 +694,7 @@ Model.prototype = {
 	    file_id : obj.file_id,
 	    user_id : obj.user_id
 	};
-	this._xhr.review_delegate(data, success);
+	this._xhr.catalog_delegate(data, success);
     },
 
     catalog_revoke : function(obj) {
@@ -693,11 +709,12 @@ Model.prototype = {
 	    file_id : obj.file_id,
 	    user_id : obj.user_id
 	};
-	this._xhr.review_revoke(data, success);
+	this._xhr.catalog_revoke(data, success);
     },
 
     get_users : function() {
-	return this._users;
+        if (this._users.length === 0) this.update_catalog_users();
+        return this._users;
     },
 
     init_catalog_review : function() {
@@ -743,17 +760,7 @@ Model.prototype = {
     },
 
     init : function() {
-	var _this = this;
-	var success = function(response){
-	    var i = 0, lst = JSON.parse(response);
-	    for (; i < lst.length; ++i) {
-		_this.read_review(lst[i]);
-	    }
-	    _this.update_catalog_users();
-	    //setTimeout(_this.init_catalog_review, 1500);
-	    _this.init_catalog_review();
-	};
-	//this._xhr.list_reviews(success);
+        this.update_catalog_users();
     }
 };
 
@@ -908,7 +915,7 @@ function View(model, elements, templates) {
 	});
     });
 
-    this._elements.catalogBtn.click(
+    this._elements.catalogBtn.click(function(){
         var btn = $(this),
         id = btn.attr("for");
 
@@ -916,7 +923,7 @@ function View(model, elements, templates) {
             event : "catalog-read",
             data  : id
         });
-    );
+    });
 
     /* notification from model, need rerender */
 
@@ -1122,14 +1129,15 @@ View.prototype = {
 	var _this = this;
 	var id = data.id,
 	li = this.new_li(id, id),
+        dsp = this.new_li("dsp_" + id, ""),
 	ctn = this._templates.find("li.catalog-item-ctn").clone(true),
-        dsp = this._templates.find("li.catalog-object-ctn").clone(true);
 	ebtn = this._templates.find("button.upload").clone(true),
         rbtn = this._templates.find("button.read").clone(true);
 
 	var i = 0,
 	users = this._model.get_users(),
 	dselect = ctn.find("select.delegate");
+        if (users.length === 0) console.log("create_catalog: 0 user");
 
 	ebtn.attr("for", id);
         rbtn.attr("for", id);
@@ -1138,6 +1146,7 @@ View.prototype = {
 
 	ctn.attr("for", id);
         dsp.attr("for", id);
+        dsp.attr("class", dsp.attr("class") + " catalog-description");
 	for(; i < users.length; ++i) {
 	    var u = users[i];
 	    var option = $("<option></option>").attr("value", u).text(u);
@@ -1185,6 +1194,7 @@ View.prototype = {
 	});
 
 	this._elements.catalogDiv.find("ul").append(li, dsp, ctn);
+        dsp.toggle();
     },
 
     catalog_uploaded : function(obj) {
@@ -1212,15 +1222,15 @@ View.prototype = {
     catalog_read : function(obj) {
         var id = obj.id;
         var file_id = obj.data.file_id;
-        var meta = obj.data.data;
+        var meta = JSON.parse(obj.data.data);
+        console.log("catalog_read: " + meta);
 
         var li = this._elements.catalogDiv.find("#" + id);
-        var dsp = this._elements.catalogDiv.find("li.catalog-object-ctn[for=" + id + "]");
+        var dsp = this._elements.catalogDiv.find("#dsp_" + id);
+        var description = meta.category + " : " + meta.version + " : " + meta.description;
 
         li.attr("file-id", file_id);
-        dsp.find("div[for=category]").text(meta.category);
-        dsp.find("div[for=version]").text(meta.version);
-        dsp.find("div[for=description]").text(meta.description);
+        dsp.find("span.title").text(description);
         dsp.toggle();
     },
 
@@ -1358,7 +1368,7 @@ Controller.prototype = {
     },
 
     catalog_sync : function() {
-	this._model.update_catalog_users();
+        this._model.update_catalog_users();
 	this._model.sync_catalog();
     },
 
