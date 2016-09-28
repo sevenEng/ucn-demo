@@ -1,17 +1,5 @@
 'use strict';
 
-var Utils = {
-    ofCatalogId : function(cata_id) {
-	var inx = cata_id.indexOf("cata_");
-	if (inx == -1) return cata_id;
-	else return cata_id.substr(inx + "cata_".length);
-    },
-
-    toCatalogId : function(id) {
-	return "cata_" + id;
-    }
-};
-
 function Event (sender) {
     this._sender = sender;
     this._listeners = [];
@@ -607,7 +595,13 @@ Model.prototype = {
 	var _this = this;
 	var success = function(response) {
 	    var users = JSON.parse(response);
-	    _this._users = users;
+            if (_this._users.length !== users) {
+                _this._users = users;
+                _this.catalogEvent.notify({
+                    event : "users",
+                    data : users
+                });
+            }
 	};
 	this._xhr.update_catalog_users(success);
     },
@@ -760,7 +754,7 @@ Model.prototype = {
     },
 
     init : function() {
-        this.update_catalog_users();
+        //this.update_catalog_users();
     }
 };
 
@@ -978,6 +972,8 @@ function View(model, elements, templates) {
 	case "revoked":
 	    _this.catalog_revoked(arg.data);
 	    break;
+        case "users":
+            _this.catalog_new_users(arg.data);
 	default:
 	    console.log("not matched catalog event" + arg.event);
 	}
@@ -1123,6 +1119,18 @@ View.prototype = {
 
     enable_catalog_sync : function() {
 	this._elements.catalogDiv.find("button.sync").show();
+    },
+
+    catalog_new_users : function(data) {
+        var selects = $("select.delegate");
+        var users = data;
+        for (var i = 0;, i < selects.length; ++i) {
+            var select = selects[i];
+            for (var j = 0; j < users.length; ++j) {
+                var u = $("<option></option>").attr("value", u).text(u);
+                select.append(u);
+            }
+        }
     },
 
     create_catalog : function(data) {
