@@ -355,7 +355,16 @@ Model.prototype = {
         //bug to fix!!! remove the list in the view but not in the model
         while(arr.length !== 0) {
             var tmp = arr.pop();
-            this.remove_gk_item(category, tmp.id, tmp.domain);
+	    this.gateKeeperEvent.notify({
+                event : "remove",
+                data  : {
+                    category : category,
+                    id       : tmp.id,
+                    domain   : tmp.domain
+                }
+            });
+	    
+            //this.remove_gk_item(category, tmp.id, tmp.domain);
         }
 
         var _this = this;
@@ -1124,7 +1133,7 @@ View.prototype = {
     catalog_new_users : function(data) {
         var selects = $("select.delegate");
         var users = data;
-        for (var i = 0;, i < selects.length; ++i) {
+        for (var i = 0; i < selects.length; ++i) {
             var select = selects[i];
             for (var j = 0; j < users.length; ++j) {
                 var u = $("<option></option>").attr("value", u).text(u);
