@@ -5,14 +5,14 @@ module Client = Cohttp_lwt_unix.Client
 
 let headers = Cohttp.Header.init_with "Access-Control-Allow-Origin" "*"
 
-let ip = "10.0.0.1"
+let ip = "128.232.98.227"
 let port = 8080
 
 let gk_ip = "10.0.0.254"
 let bridge_ip = "10.0.0.2"
 
 let gk_port = 8080
-let review_port = 10011
+let review_port = 20003
 let catalog_port = 10012
 
 
@@ -86,8 +86,17 @@ let search_movie req body tl =
   item [] 0
 
 
+let addr_of_conn = Conduit_lwt_unix.(function
+  | TCP tcp_flow ->
+     let ip, port = tcp_flow.ip, tcp_flow.port in
+     Printf.sprintf "connection from %s:%d"
+                    (Ipaddr.to_string ip) port
+  | _ -> "unconcerned source")
+
+
 let make_server conf =
-  let callback conn req body =
+  let callback (f, _) req body =
+    let () = Printf.printf "serving %s\n%!" (addr_of_conn f) in
     let uri = Cohttp.Request.uri req in
     let path = Uri.path uri in
     let steps = Astring.String.cuts ~empty:false ~sep:"/" path in
@@ -132,11 +141,12 @@ let make_server conf =
        Printf.printf "try resolving local file: %s -> %s\n%!" path fname;
        Server.respond_file ~headers ~fname ()
   in
-
+  let conn_closed (f, _) = Printf.printf "closed: %s\n%!" (addr_of_conn f) in
+  
   Conduit_lwt_unix.init ~src:ip () >>= fun conduit_ctx ->
   let ctx = Cohttp_lwt_unix_net.init ~ctx:conduit_ctx () in
   let mode = `TCP (`Port port) in
-  let t = Server.make ~callback () in
+  let t = Server.make ~conn_closed ~callback () in
   Printf.printf "listening on %s:%d\n%!" ip port;
   Server.create ~ctx ~mode t
 
