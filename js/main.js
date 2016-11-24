@@ -1278,7 +1278,7 @@ View.prototype = {
 
     create_gatekeeper_item : function(obj) {
         var for_attr = obj.category + " " + obj.id + " " + obj.domain;
-        var title = obj.id.substr(0, 6) + "    " + obj.domain;
+        var title = obj.id + "    " + obj.domain;
         var li = this.new_li(obj.id, title);
         li.attr("for", for_attr);
 
