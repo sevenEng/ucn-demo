@@ -377,7 +377,7 @@ Model.prototype = {
                 var entry = elm.split(" ");
                 var id = entry[0], domain = entry[1];
 
-                arr.push({id : , domain : domain});
+                arr.push({id : id, domain : domain});
                 _this.gateKeeperEvent.notify({
                     event : "populate",
                     data  : {
