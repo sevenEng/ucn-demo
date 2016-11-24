@@ -376,6 +376,7 @@ Model.prototype = {
                 var elm = id_arr[i];
                 var entry = elm.split(" ");
                 var id = entry[0], domain = entry[1];
+                console.log(id + " " + domain);
 
                 arr.push({id : id, domain : domain});
                 _this.gateKeeperEvent.notify({
