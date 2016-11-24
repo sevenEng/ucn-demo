@@ -372,8 +372,8 @@ Model.prototype = {
         var success = function(response) {
             var elm_arr = JSON.parse(response);
             console.log("populate " + category + ": " + elm_arr);
-            for (var i = 0; i < id_arr.length; i++) {
-                var elm = id_arr[i];
+            for (var i = 0; i < elm_arr.length; i++) {
+                var elm = elm_arr[i];
                 var entry = elm.split(" ");
                 var id = entry[0], domain = entry[1];
                 console.log(id + " " + domain);
