@@ -1137,7 +1137,7 @@ View.prototype = {
             var select = selects[i];
             for (var j = 0; j < users.length; ++j) {
                 var u = $("<option></option>").attr("value", u).text(u);
-                select.append(u);
+                select.appendChild(u);
             }
         }
     },
