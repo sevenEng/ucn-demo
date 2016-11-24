@@ -612,7 +612,9 @@ Model.prototype = {
 
 	    _this._catalog = remote;
 	};
-	this._xhr.sync_catalog(success);
+
+        success(JSON.stringify(["movie review"]));
+	//this._xhr.sync_catalog(success);
     },
 
     update_catalog_users : function() {
@@ -627,7 +629,9 @@ Model.prototype = {
                 });
             }
 	};
-	this._xhr.update_catalog_users(success);
+
+        success(JSON.stringify(["user0"; "user1"; "user2"]));
+	//this._xhr.update_catalog_users(success);
     },
 
 
@@ -657,7 +661,13 @@ Model.prototype = {
                 });
             };
 
-            _this._xhr.read_catalog(id, success);
+            var movie_review_catalog = {
+                category: "movie review",
+                version: "1.3.2",
+                description: "Object {id, title, rating, comment}"
+            };
+            success();
+            //_this._xhr.read_catalog(id, success);
         } else {
             obj = _this._catalog[inx];
             _this.catalogEvent.notify({
@@ -697,7 +707,8 @@ Model.prototype = {
 		data : obj,
 	    });
         }
-        _this._xhr.upload_catalog(data, success);
+        success();
+        //_this._xhr.upload_catalog(data, success);
     },
 
     catalog_delegate : function(obj) {
@@ -712,7 +723,8 @@ Model.prototype = {
 	    file_id : obj.file_id,
 	    user_id : obj.user_id
 	};
-	this._xhr.catalog_delegate(data, success);
+        success();
+	//this._xhr.catalog_delegate(data, success);
     },
 
     catalog_revoke : function(obj) {
@@ -727,7 +739,8 @@ Model.prototype = {
 	    file_id : obj.file_id,
 	    user_id : obj.user_id
 	};
-	this._xhr.catalog_revoke(data, success);
+        success();
+	//this._xhr.catalog_revoke(data, success);
     },
 
     get_users : function() {
