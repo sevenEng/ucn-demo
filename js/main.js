@@ -370,10 +370,23 @@ Model.prototype = {
         var _this = this;
         var obj = {path : category};
         var success = function(response) {
-            var id_arr = JSON.parse(response);
-            console.log("populate " + category + ": " + id_arr);
+            var elm_arr = JSON.parse(response);
+            console.log("populate " + category + ": " + elm_arr);
             for (var i = 0; i < id_arr.length; i++) {
-                var id = id_arr[i];
+                var elm = id_arr[i];
+                var entry = elm.split(" ");
+                var id = entry[0], domain = entry[1];
+
+                arr.push({id : , domain : domain});
+                _this.gateKeeperEvent.notify({
+                    event : "populate",
+                    data  : {
+                        category : category,
+                        id       : id,
+                        domain   : domain
+                    }
+                });
+                /*
                 var obj_tmp = {path : category + "/" + id};
                 var success_tmp = function(response_tmp) {
                     var domain_arr = JSON.parse(response_tmp);
@@ -392,6 +405,7 @@ Model.prototype = {
                     }
                 };
                 _this._xhr.list_items(obj_tmp, success_tmp);
+                */
             }
         };
         this._xhr.list_items(obj, success);
