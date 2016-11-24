@@ -10,11 +10,11 @@ let headers = Cohttp.Header.init_with "Access-Control-Allow-Origin" "*"
 let ip = "10.0.0.10"
 let port = 8080
 
-let gk_ip = "10.0.0.10"
+let gk_ip = "10.0.0.254"
 let bridge_ip = "10.0.0.2"
 
-let gk_port = 8088
-let review_port = 20003
+let gk_port = 8080
+let review_port = 10002
 let catalog_port = 10012
 
 
